@@ -1,0 +1,212 @@
+spring:
+  application:
+    name: reservation-api
+  
+  datasource:
+    url: ${postgreUrl}
+    username: ${postgreUser}
+    password: ${postgrePwd}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  data:
+    mongodb:
+      uri: ${mongoUri:mongodb://localhost:27017/reservation}?serverSelectionTimeoutMS=5000&connectTimeoutMS=5000&socketTimeoutMS=10000
+      auto-index-creation: true
+    redis:
+      host: ${redisHost:localhost}
+      port: ${redisPort:6379}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${googleClientId}
+            client-secret: ${googleClientSecret}
+            # gmail.send 스코프 추가: 구글 로그인 시 Gmail 발송 권한 동의
+            scope: profile,email,https://www.googleapis.com/auth/gmail.send
+          kakao:
+            client-id: ${kakaoClientId}
+            client-secret: ${kakaoClientSecret}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/{action}/oauth2/code/{registrationId}"
+            # talk_message scope is requested for future Kakao message fallback support.
+            scope: profile_nickname,account_email,talk_message
+            client-name: Kakao
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+  kafka:
+    bootstrap-servers: ${kafkaBootstrapServers}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      properties:
+        compression.type: lz4
+        linger.ms: 10
+        batch.size: 32768
+    consumer:
+      group-id: reservation-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      missing-topics-fatal: false
+
+  elasticsearch:
+    uris: ${elasticsearchUri}
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  notification:
+    # gmail | kakao | log (default: gmail)
+    channel: ${NOTIFICATION_CHANNEL:gmail}
+  email:
+    # Gmail 발송에 사용할 관리자 memberId (구글 로그인 완료된 계정)
+    admin-member-id: ${EMAIL_ADMIN_MEMBER_ID:0}
+
+logging:
+  level:
+    com.mariabean.reservation: DEBUG
+    org.apache.kafka: WARN
+    org.springframework.data.elasticsearch.repository.config: WARN
+    org.redisson.connection.DNSMonitor: ERROR
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+jwt:
+  secret: ${jwtSecret}
+  access-token-validity-in-seconds: 3600
+  refresh-token-validity-in-seconds: 1209600
+
+google:
+  maps:
+    api-key: ${googleMapsApiKey:}
+
+kakaopay:
+  enabled: ${kakaopayEnabled:false}
+  secret-key: ${kakaopaySecretKey:}
+  cid: ${kakaopayCid:TC0ONETIME}
+
+tosspay:
+  enabled: ${tosspayEnabled:false}
+  secret-key: ${tosspaySecretKey:}
+
+kakao:
+  local:
+    rest-api-key: ${kakaoRestApiKey:}
+  messaging:
+    # AlimTalk (primary channel)
+    alimtalk:
+      provider: ${kakaoAlimtalkProvider:GENERIC}
+      enabled: ${kakaoAlimtalkEnabled:false}
+      endpoint: ${kakaoAlimtalkEndpoint:}
+      token: ${kakaoAlimtalkToken:}
+      api-key: ${kakaoAlimtalkApiKey:}
+      sender-key: ${kakaoAlimtalkSenderKey:}
+      template-code: ${kakaoAlimtalkTemplateCode:}
+    # Kakao Talk Message API (fallback channel)
+    talk-message:
+      enabled: ${kakaoTalkMessageEnabled:false}
+      endpoint: ${kakaoTalkMessageEndpoint:}
+      token: ${kakaoTalkMessageToken:}
+      api-key: ${kakaoTalkMessageApiKey:}
+      template-code: ${kakaoTalkMessageTemplateCode:}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  health:
+    elasticsearch:
+      enabled: false
+
+# Swagger / OpenAPI
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+# HIRA 진료과 코드 (20종)
+hira:
+  specialties:
+    - code: "01"
+      name: "내과"
+      kakaoKeyword: "내과"
+    - code: "02"
+      name: "신경과"
+      kakaoKeyword: "신경과"
+    - code: "03"
+      name: "정신건강의학과"
+      kakaoKeyword: "정신건강의학과"
+    - code: "04"
+      name: "외과"
+      kakaoKeyword: "외과"
+    - code: "05"
+      name: "정형외과"
+      kakaoKeyword: "정형외과"
+    - code: "06"
+      name: "신경외과"
+      kakaoKeyword: "신경외과"
+    - code: "07"
+      name: "흉부외과"
+      kakaoKeyword: "흉부외과"
+    - code: "08"
+      name: "성형외과"
+      kakaoKeyword: "성형외과"
+    - code: "10"
+      name: "산부인과"
+      kakaoKeyword: "산부인과"
+    - code: "11"
+      name: "소아청소년과"
+      kakaoKeyword: "소아청소년과"
+    - code: "12"
+      name: "안과"
+      kakaoKeyword: "안과"
+    - code: "13"
+      name: "이비인후과"
+      kakaoKeyword: "이비인후과"
+    - code: "14"
+      name: "피부과"
+      kakaoKeyword: "피부과"
+    - code: "15"
+      name: "비뇨의학과"
+      kakaoKeyword: "비뇨의학과"
+    - code: "20"
+      name: "재활의학과"
+      kakaoKeyword: "재활의학과"
+    - code: "22"
+      name: "가정의학과"
+      kakaoKeyword: "가정의학과"
+    - code: "23"
+      name: "응급의학과"
+      kakaoKeyword: "응급의학과"
+    - code: "26"
+      name: "치과"
+      kakaoKeyword: "치과"
+    - code: "27"
+      name: "한방내과"
+      kakaoKeyword: "한방내과"
+    - code: "28"
+      name: "한방외과"
+      kakaoKeyword: "한방외과"
