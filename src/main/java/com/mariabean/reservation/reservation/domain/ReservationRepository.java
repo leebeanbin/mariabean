@@ -24,6 +24,9 @@ public interface ReservationRepository {
 
         List<Reservation> findActiveByResourceItemId(String resourceItemId);
 
+        List<Reservation> findByResourceItemIdAndTimeRange(String resourceItemId,
+                        List<ReservationStatus> statuses, LocalDateTime from, LocalDateTime to);
+
         long countConflictingReservations(String resourceItemId, List<ReservationStatus> statuses,
                         LocalDateTime start, LocalDateTime end);
 

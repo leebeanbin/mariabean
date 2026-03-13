@@ -52,6 +52,12 @@ public class FacilityPersistenceAdapter implements FacilityRepository {
     }
 
     @Override
+    public List<Facility> findAllById(List<String> ids) {
+        return mongoRepository.findAllById(ids).stream()
+                .map(this::mapToDomain).collect(Collectors.toList());
+    }
+
+    @Override
     public Facility getById(String id) {
         return findById(id).orElseThrow(() -> new BusinessException(ErrorCode.ENTITY_NOT_FOUND));
     }

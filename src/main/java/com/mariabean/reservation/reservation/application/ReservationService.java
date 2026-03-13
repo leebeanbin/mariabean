@@ -269,11 +269,8 @@ public class ReservationService {
         LocalDateTime endOfDay = date.atTime(21, 0);
 
         List<ReservationStatus> activeStatuses = List.of(ReservationStatus.PENDING, ReservationStatus.CONFIRMED);
-        List<Reservation> existing = reservationRepository.findActiveByResourceItemId(resourceItemId)
-                .stream()
-                .filter(r -> activeStatuses.contains(r.getStatus()))
-                .filter(r -> !r.getEndTime().isBefore(startOfDay) && !r.getStartTime().isAfter(endOfDay))
-                .toList();
+        List<Reservation> existing = reservationRepository.findByResourceItemIdAndTimeRange(
+                resourceItemId, activeStatuses, startOfDay, endOfDay);
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
         List<AvailabilityResponse.TimeSlot> slots = new ArrayList<>();

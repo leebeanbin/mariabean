@@ -12,6 +12,8 @@ public interface FacilityRepository {
 
     Optional<Facility> findById(String id);
 
+    List<Facility> findAllById(List<String> ids);
+
     Facility getById(String id);
 
     Optional<Facility> findByPlaceId(String placeId);

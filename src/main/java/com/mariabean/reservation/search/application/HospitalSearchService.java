@@ -50,6 +50,11 @@ public class HospitalSearchService {
      * textQuery가 있으면 자연어 쿼리(예: "강남 정형외과")로 ES+Kakao 검색.
      * 내부 ES → Kakao Local 결과 합산, openNow 필터 적용.
      */
+    @Cacheable(
+        value = "hospitalSearch",
+        key = "#lat + ':' + #lng + ':' + #radiusKm + ':' + #specialtyCodes + ':' + #openNow",
+        unless = "#result.content.isEmpty()"
+    )
     public Page<HospitalSearchResult> searchHospitals(
             double lat, double lng, double radiusKm,
             List<String> specialtyCodes,
@@ -147,9 +152,12 @@ public class HospitalSearchService {
             SearchHits<FacilitySearchDocument> hits = elasticsearchOperations
                     .search(nativeQuery, FacilitySearchDocument.class);
 
-            return hits.stream()
+            List<FacilitySearchDocument> docs = hits.stream()
                     .map(SearchHit::getContent)
-                    .map(doc -> buildFromDoc(doc))
+                    .collect(Collectors.toList());
+            Map<String, Facility> facilityMap = batchLoadFacilities(docs);
+            return docs.stream()
+                    .map(doc -> buildFromDoc(doc, facilityMap))
                     .sorted(Comparator.comparing(r -> Boolean.TRUE.equals(r.getOpenNow()) ? 0 : 1))
                     .collect(Collectors.toList());
         } catch (Exception e) {
@@ -184,12 +192,19 @@ public class HospitalSearchService {
                 .collect(Collectors.toList());
     }
 
-    private HospitalSearchResult buildFromDoc(FacilitySearchDocument doc) {
-        Optional<Facility> facilityOpt = facilityRepository.findById(doc.getId());
-        Boolean isOpen = facilityOpt.map(this::isOpenNow).orElse(null);
-        Map<String, Object> opHours = facilityOpt
-                .map(f -> (Map<String, Object>) f.getMetadata().get("operatingHours"))
-                .orElse(null);
+    private Map<String, Facility> batchLoadFacilities(List<FacilitySearchDocument> docs) {
+        List<String> ids = docs.stream().map(FacilitySearchDocument::getId).collect(Collectors.toList());
+        return facilityRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Facility::getId, f -> f));
+    }
+
+    private HospitalSearchResult buildFromDoc(FacilitySearchDocument doc, Map<String, Facility> facilityMap) {
+        Facility facility = facilityMap.get(doc.getId());
+        Boolean isOpen = facility != null ? isOpenNow(facility) : null;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> opHours = facility != null
+                ? (Map<String, Object>) facility.getMetadata().get("operatingHours")
+                : null;
         return HospitalSearchResult.builder()
                 .facilityId(doc.getId())
                 .placeId(doc.getPlaceId())
@@ -239,9 +254,12 @@ public class HospitalSearchService {
             SearchHits<FacilitySearchDocument> hits = elasticsearchOperations
                     .search(nativeQuery, FacilitySearchDocument.class);
 
-            return hits.stream()
+            List<FacilitySearchDocument> docs = hits.stream()
                     .map(SearchHit::getContent)
-                    .map(this::buildFromDoc)
+                    .collect(Collectors.toList());
+            Map<String, Facility> facilityMap = batchLoadFacilities(docs);
+            return docs.stream()
+                    .map(doc -> buildFromDoc(doc, facilityMap))
                     .sorted(Comparator.comparing(r -> Boolean.TRUE.equals(r.getOpenNow()) ? 0 : 1))
                     .collect(Collectors.toList());
         } catch (Exception e) {

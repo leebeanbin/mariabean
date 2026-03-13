@@ -152,6 +152,21 @@ public class ReservationPersistenceAdapter implements ReservationRepository {
     }
 
     @Override
+    public List<Reservation> findByResourceItemIdAndTimeRange(String resourceItemId,
+            List<ReservationStatus> statuses, LocalDateTime from, LocalDateTime to) {
+        return queryFactory
+                .selectFrom(reservation)
+                .where(
+                        reservation.resourceItemId.eq(resourceItemId),
+                        reservation.status.in(statuses),
+                        reservation.startTime.lt(to),
+                        reservation.endTime.gt(from),
+                        isNotDeleted())
+                .fetch()
+                .stream().map(this::toDomain).collect(Collectors.toList());
+    }
+
+    @Override
     public List<Reservation> findPendingBefore(List<ReservationStatus> statuses, LocalDateTime before) {
         return queryFactory
                 .selectFrom(reservation)
