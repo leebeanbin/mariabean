@@ -34,6 +34,11 @@ public class OutboxEvent extends BaseTimeEntity {
     @Column(nullable = false)
     private OutboxStatus status;
 
+    @Column(nullable = false)
+    private int retryCount = 0;
+
+    private static final int MAX_RETRIES = 5;
+
     @Builder
     public OutboxEvent(String aggregateType, String aggregateId, String eventType, String payload) {
         this.aggregateType = aggregateType;
@@ -41,17 +46,23 @@ public class OutboxEvent extends BaseTimeEntity {
         this.eventType = eventType;
         this.payload = payload;
         this.status = OutboxStatus.PENDING;
+        this.retryCount = 0;
     }
 
     public void markAsPublished() {
         this.status = OutboxStatus.PUBLISHED;
     }
 
-    public void markAsFailed() {
-        this.status = OutboxStatus.FAILED;
+    public void incrementRetry() {
+        this.retryCount++;
+        if (this.retryCount >= MAX_RETRIES) {
+            this.status = OutboxStatus.DEAD;
+        } else {
+            this.status = OutboxStatus.FAILED;
+        }
     }
 
     public enum OutboxStatus {
-        PENDING, PUBLISHED, FAILED
+        PENDING, PUBLISHED, FAILED, DEAD
     }
 }

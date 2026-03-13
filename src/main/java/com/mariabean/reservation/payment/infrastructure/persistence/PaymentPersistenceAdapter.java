@@ -5,6 +5,7 @@ import com.mariabean.reservation.global.exception.ErrorCode;
 
 import com.mariabean.reservation.payment.domain.Payment;
 import com.mariabean.reservation.payment.domain.PaymentRepository;
+import com.mariabean.reservation.payment.domain.PaymentStatus;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,17 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
     @Override
     public Payment getByReservationId(Long reservationId) {
         return findByReservationId(reservationId).orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+    }
+
+    @Override
+    public boolean existsActivePayment(Long reservationId) {
+        return queryFactory
+                .selectOne()
+                .from(payment)
+                .where(payment.reservationId.eq(reservationId),
+                        payment.status.in(PaymentStatus.READY, PaymentStatus.APPROVED),
+                        isNotDeleted())
+                .fetchFirst() != null;
     }
 
     private PaymentJpaEntity toEntity(Payment p) {

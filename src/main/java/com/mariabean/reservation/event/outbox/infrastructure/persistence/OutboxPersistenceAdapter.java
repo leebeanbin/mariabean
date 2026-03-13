@@ -25,6 +25,11 @@ public class OutboxPersistenceAdapter implements OutboxEventRepository {
     }
 
     @Override
+    public List<OutboxEvent> findTop100ByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus status) {
+        return jpaRepository.findTop100ByStatusOrderByCreatedAtAsc(status);
+    }
+
+    @Override
     public List<OutboxEvent> findOldPendingEvents(OutboxEvent.OutboxStatus status, LocalDateTime before) {
         return jpaRepository.findOldPendingEvents(status, before);
     }

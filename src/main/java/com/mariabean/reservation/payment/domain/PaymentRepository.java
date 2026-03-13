@@ -1,5 +1,6 @@
 package com.mariabean.reservation.payment.domain;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface PaymentRepository {
@@ -12,4 +13,6 @@ public interface PaymentRepository {
     Optional<Payment> findByReservationId(Long reservationId);
 
     Payment getByReservationId(Long reservationId);
+
+    boolean existsActivePayment(Long reservationId);
 }

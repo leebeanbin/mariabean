@@ -31,6 +31,10 @@ public class PaymentService {
          */
         @Transactional
         public Payment readyPayment(PaymentReadyRequest request, Long memberId) {
+                if (paymentRepository.existsActivePayment(request.getReservationId())) {
+                        throw new BusinessException(ErrorCode.PAYMENT_ALREADY_EXISTS);
+                }
+
                 PgGateway gateway = pgGatewayFactory.getGateway(request.getProvider());
                 String orderId = "ORDER-" + request.getReservationId() + "-" + System.currentTimeMillis();
                 PgReadyResult pgResult = gateway.ready(request.getReservationId(), request.getAmount(), orderId);

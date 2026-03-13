@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -25,27 +24,39 @@ public class OutboxEventPublisherScheduler {
     private final ObjectMapper objectMapper;
 
     @Scheduled(fixedDelayString = "${outbox.poll.delay:30000}")
-    @Transactional
     public void publishPendingEvents() {
-        List<OutboxEvent> pendingEvents = outboxEventRepository
-                .findByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus.PENDING);
-
+        List<OutboxEvent> pendingEvents = fetchPending();
         if (pendingEvents.isEmpty()) return;
 
         for (OutboxEvent event : pendingEvents) {
             try {
+                objectMapper.readTree(event.getPayload()); // validate JSON
                 String topic = determineTopic(event.getAggregateType(), event.getEventType());
-
-                objectMapper.readTree(event.getPayload());
-                kafkaTemplate.send(topic, event.getAggregateId(), event.getPayload()).get(5, TimeUnit.SECONDS);
-
-                event.markAsPublished();
+                kafkaTemplate.send(topic, event.getAggregateId(), event.getPayload());
+                markPublished(event);
                 log.debug("Outbox event {} published to topic {}", event.getId(), topic);
             } catch (Exception e) {
-                log.warn("Outbox event {} publish failed (will retry): {}", event.getId(), e.getMessage());
-                event.markAsFailed();
+                log.warn("Outbox event {} publish failed (retry {}): {}", event.getId(), event.getRetryCount(), e.getMessage());
+                markFailed(event);
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<OutboxEvent> fetchPending() {
+        return outboxEventRepository.findTop100ByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus.PENDING);
+    }
+
+    @Transactional
+    public void markPublished(OutboxEvent event) {
+        event.markAsPublished();
+        outboxEventRepository.save(event);
+    }
+
+    @Transactional
+    public void markFailed(OutboxEvent event) {
+        event.incrementRetry();
+        outboxEventRepository.save(event);
     }
 
     private String determineTopic(String aggregateType, String eventType) {

@@ -12,6 +12,8 @@ public interface OutboxEventJpaRepository extends JpaRepository<OutboxEvent, Lon
 
     List<OutboxEvent> findByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus status);
 
+    List<OutboxEvent> findTop100ByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus status);
+
     @Query("SELECT o FROM OutboxEvent o WHERE o.status = :status AND o.createdAt <= :before")
     List<OutboxEvent> findOldPendingEvents(@Param("status") OutboxEvent.OutboxStatus status,
             @Param("before") LocalDateTime before);

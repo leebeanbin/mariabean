@@ -8,5 +8,7 @@ public interface OutboxEventRepository {
 
     List<OutboxEvent> findByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus status);
 
+    List<OutboxEvent> findTop100ByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus status);
+
     List<OutboxEvent> findOldPendingEvents(OutboxEvent.OutboxStatus status, LocalDateTime before);
 }
