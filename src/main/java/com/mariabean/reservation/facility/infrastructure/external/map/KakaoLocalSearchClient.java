@@ -186,6 +186,31 @@ public class KakaoLocalSearchClient {
         }
     }
 
+    /**
+     * 위치 기반 키워드 검색.
+     */
+    public List<PlaceSearchResult> searchNearby(String query, double lat, double lng, int radiusMeters) {
+        if (!isConfigured()) return List.of();
+        String url = UriComponentsBuilder.fromHttpUrl(KEYWORD_SEARCH_URL)
+                .queryParam("query", query)
+                .queryParam("x", lng)
+                .queryParam("y", lat)
+                .queryParam("radius", Math.min(radiusMeters, 20000))
+                .queryParam("size", 10)
+                .toUriString();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "KakaoAK " + restApiKey);
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
+            JsonNode docs = response.getBody() != null ? response.getBody().path("documents") : null;
+            return parseKeywordDocuments(docs);
+        } catch (Exception e) {
+            log.warn("[KakaoLocal] nearby search failed query='{}': {}", query, e.getMessage());
+            return List.of();
+        }
+    }
+
     private boolean isAddressLike(String name, String address) {
         String target = ((name == null ? "" : name) + " " + (address == null ? "" : address)).toLowerCase();
         return target.matches(".*\\d+.*")
