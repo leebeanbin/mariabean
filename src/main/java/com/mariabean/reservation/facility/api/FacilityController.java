@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,6 +34,7 @@ public class FacilityController {
      * - placeId 포함 시: 외부 지도 API(Google/Naver 조합)로 이름/주소/좌표 자동 보완
      * - placeId 없을 시: name, address, latitude, longitude 직접 입력
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public CommonResponse<FacilityResponse> registerFacility(
             @RequestBody @Valid FacilityCreateRequest request) {
@@ -64,6 +66,7 @@ public class FacilityController {
                 facilityService.updateFacility(facilityId, request, SecurityUtils.getCurrentMemberId())));
     }
 
+    @PreAuthorize("hasRole('ADMIN') or @facilityService.isOwner(#facilityId, authentication.principal.memberId)")
     @PatchMapping("/{facilityId}/medical")
     public CommonResponse<FacilityResponse> updateFacilityMedical(
             @PathVariable String facilityId,
@@ -72,6 +75,7 @@ public class FacilityController {
                 facilityService.updateFacilityMedical(facilityId, request, SecurityUtils.getCurrentMemberId())));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{facilityId}")
     public CommonResponse<Void> deleteFacility(@PathVariable String facilityId) {
         facilityService.deleteFacility(facilityId, SecurityUtils.getCurrentMemberId());

@@ -152,6 +152,11 @@ public class FacilityService {
         return saved;
     }
 
+    @Transactional(readOnly = true)
+    public boolean isOwner(String facilityId, Long memberId) {
+        return facilityRepository.getById(facilityId).getOwnerMemberId().equals(memberId);
+    }
+
     @CacheEvict(value = "facilities", key = "#facilityId")
     @Transactional
     public void deleteFacility(String facilityId, Long currentMemberId) {

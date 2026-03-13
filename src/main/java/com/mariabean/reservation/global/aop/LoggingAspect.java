@@ -12,10 +12,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class LoggingAspect {
 
-    @Pointcut("within(com.mariabean.reservation.api..*)")
+    @Pointcut("within(com.mariabean.reservation.*.api..*)")
     public void controllerPointcut() {}
 
-    @Pointcut("within(com.mariabean.reservation.application..*)")
+    @Pointcut("within(com.mariabean.reservation.*.application..*)")
     public void servicePointcut() {}
 
     @Around("controllerPointcut() || servicePointcut()")

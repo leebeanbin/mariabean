@@ -46,7 +46,8 @@ public enum ErrorCode {
         PAYMENT_STATUS_INVALID(HttpStatus.BAD_REQUEST, "P002", "Invalid payment status transition"),
         PAYMENT_CANCEL_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "P003",
                         "Payment cancellation is not allowed in current state"),
-        PAYMENT_APPROVAL_FAILED(HttpStatus.BAD_GATEWAY, "P004", "Payment approval failed from PG");
+        PAYMENT_APPROVAL_FAILED(HttpStatus.BAD_GATEWAY, "P004", "Payment approval failed from PG"),
+        PAYMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "P005", "Active payment already exists for this reservation");
 
         private final HttpStatus status;
         private final String code;

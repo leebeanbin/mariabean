@@ -76,12 +76,12 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
         log.info("OAuth2 login success. Email: {}", email);
 
+        // URL fragment(#)를 사용해 토큰 전달 — fragment는 서버로 전송되지 않아 서버 로그에 기록되지 않음
         String targetUrl = String.format(
-                "%s/auth/callback?accessToken=%s&refreshToken=%s&email=%s&memberId=%s",
+                "%s/auth/callback#accessToken=%s&refreshToken=%s&memberId=%s",
                 frontendUrl,
                 URLEncoder.encode(accessToken, StandardCharsets.UTF_8),
                 URLEncoder.encode(refreshTokenString, StandardCharsets.UTF_8),
-                URLEncoder.encode(email, StandardCharsets.UTF_8),
                 memberId);
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);

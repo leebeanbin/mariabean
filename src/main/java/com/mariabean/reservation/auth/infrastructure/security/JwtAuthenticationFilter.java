@@ -2,7 +2,9 @@ package com.mariabean.reservation.auth.infrastructure.security;
 
 import com.mariabean.reservation.auth.application.JwtProvider;
 import com.mariabean.reservation.auth.domain.UserPrincipal;
+import com.mariabean.reservation.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -19,6 +21,7 @@ import java.util.Collections;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -34,16 +37,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String jwt = resolveToken(request);
 
-        if (StringUtils.hasText(jwt) && jwtProvider.validateToken(jwt)) {
-            String email = jwtProvider.getPayload(jwt);
-            Long memberId = jwtProvider.getMemberId(jwt);
-            String role = jwtProvider.getRole(jwt);
+        if (StringUtils.hasText(jwt)) {
+            try {
+                if (jwtProvider.validateToken(jwt)) {
+                    String email = jwtProvider.getPayload(jwt);
+                    Long memberId = jwtProvider.getMemberId(jwt);
+                    String role = jwtProvider.getRole(jwt);
 
-            UserPrincipal principal = new UserPrincipal(memberId, email,
-                    Collections.singleton(new SimpleGrantedAuthority(role)));
-            Authentication authentication = new UsernamePasswordAuthenticationToken(
-                    principal, "", principal.getAuthorities());
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+                    UserPrincipal principal = new UserPrincipal(memberId, email,
+                            Collections.singleton(new SimpleGrantedAuthority(role)));
+                    Authentication authentication = new UsernamePasswordAuthenticationToken(
+                            principal, "", principal.getAuthorities());
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
+            } catch (BusinessException e) {
+                // TOKEN_EXPIRED or UNAUTHORIZED — SecurityContext는 비어있는 채로 진행
+                // Spring Security가 이후 인증 필요 엔드포인트에서 401 반환
+                log.debug("JWT validation failed [{}]: {}", request.getRequestURI(), e.getErrorCode().getCode());
+            }
         }
 
         filterChain.doFilter(request, response);

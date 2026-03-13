@@ -3,6 +3,7 @@ package com.mariabean.reservation.payment.infrastructure.external.pg;
 import com.mariabean.reservation.payment.application.pg.PgGateway;
 import com.mariabean.reservation.payment.application.pg.PgReadyResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
  */
 @Slf4j
 @Component
+@Profile("!prod")
 public class StubPgGateway implements PgGateway {
 
     @Override

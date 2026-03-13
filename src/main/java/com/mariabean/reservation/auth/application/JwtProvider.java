@@ -1,6 +1,8 @@
 package com.mariabean.reservation.auth.application;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -8,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import com.mariabean.reservation.global.exception.BusinessException;
+import com.mariabean.reservation.global.exception.ErrorCode;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
@@ -21,7 +25,7 @@ public class JwtProvider {
     private final long refreshTokenValidityInMilliseconds;
 
     public JwtProvider(
-            @Value("${jwt.secret:defaultSecretKeyWhichNeedsToBeVeryLongToGuaranteeSecurity1234567890}") String secret,
+            @Value("${jwt.secret}") String secret,
             @Value("${jwt.access-token-validity-in-seconds:3600}") long accessTokenValidityInSeconds,
             @Value("${jwt.refresh-token-validity-in-seconds:1209600}") long refreshTokenValidityInSeconds) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
@@ -78,9 +82,12 @@ public class JwtProvider {
         try {
             Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token);
             return true;
-        } catch (Exception e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
-            return false;
+        } catch (ExpiredJwtException e) {
+            log.debug("Expired JWT token: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.TOKEN_EXPIRED);
+        } catch (JwtException | IllegalArgumentException e) {
+            log.warn("Invalid JWT token: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
     }
 }
