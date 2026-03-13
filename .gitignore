@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+out/
+
+# OS
+.DS_Store
+
+# Secrets - NEVER commit these
+.env
+
+# Logs
+*.log
+
+# QueryDSL
+src/main/generated/
