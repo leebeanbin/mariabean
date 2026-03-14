@@ -85,23 +85,26 @@ services:
       retries: 20
       start_period: 60s
 
-  # ollama-init: 최초 1회 모델 Pull 전담 (완료 후 자동 종료)
+  # ollama-init: 최초 1회 모델 Pull 전담 (완료 후 자동 종료, restart: no)
+  # - 모델이 이미 존재하면 skip (ollama list | grep -q)
+  # - restart: "no" 로 무한 루프 방지
   ollama-init:
     image: ollama/ollama:latest
     container_name: reservation-ollama-init
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
     environment:
       - OLLAMA_HOST=http://ollama:11434
     entrypoint: >
       /bin/sh -c "
         sleep 10 &&
-        ollama pull qwen2.5:7b &&
-        ollama pull nomic-embed-text &&
-        ollama pull llava:7b &&
-        echo '[ollama-init] 모델 Pull 완료'
+        ollama list | grep -q 'qwen2.5:7b'       || ollama pull qwen2.5:7b &&
+        ollama list | grep -q 'nomic-embed-text'  || ollama pull nomic-embed-text &&
+        ollama list | grep -q 'llava:7b'          || ollama pull llava:7b &&
+        echo '[ollama-init] 모델 준비 완료'
       "
-    restart: on-failure
+    restart: "no"
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
