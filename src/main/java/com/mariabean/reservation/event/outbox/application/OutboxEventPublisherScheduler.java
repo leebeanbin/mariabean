@@ -66,6 +66,9 @@ public class OutboxEventPublisherScheduler {
         if ("RESERVATION".equals(aggregateType)) {
             return "reservation-events";
         }
+        if ("AI_EMBEDDING".equals(aggregateType)) {
+            return "ai-embedding-tasks";
+        }
         return "domain-events";
     }
 }

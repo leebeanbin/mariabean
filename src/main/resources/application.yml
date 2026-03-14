@@ -1,6 +1,10 @@
 spring:
   application:
     name: reservation-api
+
+  threads:
+    virtual:
+      enabled: false   # Java 17 — virtual threads disabled (Java 21+에서 true로 변경)
   
   datasource:
     url: ${postgreUrl}
@@ -71,6 +75,19 @@ spring:
   elasticsearch:
     uris: ${elasticsearchUri}
 
+  ai:
+    ollama:
+      base-url: ${ollamaBaseUrl:http://localhost:11434}
+      chat:
+        options:
+          model: ${ollamaChatModel:qwen2.5:7b}
+          temperature: 0.2
+      embedding:
+        options:
+          model: ${ollamaEmbedModel:nomic-embed-text}
+    tavily:
+      api-key: ${TAVILY_API_KEY:}
+
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   notification:
@@ -79,6 +96,10 @@ app:
   email:
     # Gmail 발송에 사용할 관리자 memberId (구글 로그인 완료된 계정)
     admin-member-id: ${EMAIL_ADMIN_MEMBER_ID:0}
+  search:
+    ollama-timeout-ms: 8000
+    tavily-timeout-ms: 4000
+    photo-max-count: 4
 
 logging:
   level:

@@ -28,11 +28,17 @@ public class RedisCacheConfig {
                 .entryTtl(Duration.ofMinutes(30)); // 기본 30분 TTL
 
         RedisCacheConfiguration hospitalSearchConfig = defaultConfig.entryTtl(Duration.ofSeconds(60));
+        RedisCacheConfiguration aiSearchConfig = defaultConfig.entryTtl(Duration.ofSeconds(90));
+        RedisCacheConfiguration userPrefConfig = defaultConfig.entryTtl(Duration.ofDays(60));
 
         return RedisCacheManager.RedisCacheManagerBuilder
                 .fromConnectionFactory(redisConnectionFactory)
                 .cacheDefaults(defaultConfig)
-                .withInitialCacheConfigurations(Map.of("hospitalSearch", hospitalSearchConfig))
+                .withInitialCacheConfigurations(Map.of(
+                        "hospitalSearch", hospitalSearchConfig,
+                        "ai_search", aiSearchConfig,
+                        "user_pref", userPrefConfig
+                ))
                 .build();
     }
 }

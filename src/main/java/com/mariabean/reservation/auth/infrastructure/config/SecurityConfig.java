@@ -70,6 +70,11 @@ public class SecurityConfig {
                                                                 "/api/v1/resources/**",
                                                                 "/api/v1/search/**")
                                                 .permitAll()
+                                                .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                                                "/api/v1/search/vision",
+                                                                "/api/v1/search/vision/url")
+                                                .permitAll()
+                                                .requestMatchers("/api/v1/admin/search/**").hasRole("ADMIN")
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
                                                 .userInfoEndpoint(userInfo -> userInfo

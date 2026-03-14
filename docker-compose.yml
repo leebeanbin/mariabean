@@ -67,6 +67,42 @@ services:
       timeout: 10s
       retries: 10
 
+  # ── Ollama (AI 모델 서버) ──────────────────────────────────────────
+  # 포트: 11434 (기본값)
+  # 모델 자동 Pull: qwen2.5:7b (요약/분석), nomic-embed-text (임베딩), llava:7b (Vision)
+  # 최초 실행 시 모델 다운로드로 수 분 소요. ollama_data 볼륨에 캐시됨.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: reservation-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>/dev/null | grep -q 'nomic-embed-text' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 60s
+
+  # ollama-init: 최초 1회 모델 Pull 전담 (완료 후 자동 종료)
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: reservation-ollama-init
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: >
+      /bin/sh -c "
+        sleep 10 &&
+        ollama pull qwen2.5:7b &&
+        ollama pull nomic-embed-text &&
+        ollama pull llava:7b &&
+        echo '[ollama-init] 모델 Pull 완료'
+      "
+    restart: on-failure
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: reservation-kafka
@@ -94,3 +130,4 @@ volumes:
   postgres_data:
   mongo_data:
   es_data:
+  ollama_data:
