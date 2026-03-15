@@ -12,6 +12,10 @@ import com.mariabean.reservation.payment.domain.PaymentRepository;
 import com.mariabean.reservation.payment.domain.PaymentStatus;
 import com.mariabean.reservation.payment.infrastructure.external.pg.PgGatewayFactory;
 import com.mariabean.reservation.auth.domain.UserPrincipal;
+import com.mariabean.reservation.reservation.domain.Reservation;
+import com.mariabean.reservation.reservation.domain.ReservationRepository;
+import com.mariabean.reservation.facility.domain.ResourceItem;
+import com.mariabean.reservation.facility.domain.ResourceItemRepository;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -50,6 +54,12 @@ class PaymentServiceTest {
         @Mock
         private PgGateway pgGateway;
 
+        @Mock
+        private ReservationRepository reservationRepository;
+
+        @Mock
+        private ResourceItemRepository resourceItemRepository;
+
         @Test
         @DisplayName("결제 준비(READY) 후 정상 저장된다")
         void readyPayment_success() {
@@ -58,6 +68,16 @@ class PaymentServiceTest {
                                 .provider(PaymentProvider.KAKAO_PAY)
                                 .amount(BigDecimal.valueOf(50000))
                                 .build();
+
+                Reservation reservation = Reservation.builder()
+                                .id(100L).memberId(10L).resourceItemId("res-1")
+                                .startTime(java.time.LocalDateTime.now())
+                                .endTime(java.time.LocalDateTime.now().plusHours(1))
+                                .build();
+                ResourceItem resourceItem = ResourceItem.builder()
+                                .id("res-1").name("회의실").build();
+                given(reservationRepository.getById(100L)).willReturn(reservation);
+                given(resourceItemRepository.getById("res-1")).willReturn(resourceItem);
 
                 given(pgGatewayFactory.getGateway(PaymentProvider.KAKAO_PAY)).willReturn(pgGateway);
                 given(pgGateway.ready(anyLong(), any(BigDecimal.class), anyString()))

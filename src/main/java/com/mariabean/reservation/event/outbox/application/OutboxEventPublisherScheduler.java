@@ -32,9 +32,14 @@ public class OutboxEventPublisherScheduler {
             try {
                 objectMapper.readTree(event.getPayload()); // validate JSON
                 String topic = determineTopic(event.getAggregateType(), event.getEventType());
-                kafkaTemplate.send(topic, event.getAggregateId(), event.getPayload());
-                markPublished(event);
-                log.debug("Outbox event {} published to topic {}", event.getId(), topic);
+                try {
+                    kafkaTemplate.send(topic, event.getAggregateId(), event.getPayload()).get();
+                    markPublished(event);
+                    log.debug("Outbox event {} published to topic {}", event.getId(), topic);
+                } catch (Exception sendEx) {
+                    log.warn("Outbox event {} publish failed (retry {}): {}", event.getId(), event.getRetryCount(), sendEx.getMessage());
+                    markFailed(event);
+                }
             } catch (Exception e) {
                 log.warn("Outbox event {} publish failed (retry {}): {}", event.getId(), event.getRetryCount(), e.getMessage());
                 markFailed(event);
@@ -44,7 +49,7 @@ public class OutboxEventPublisherScheduler {
 
     @Transactional(readOnly = true)
     public List<OutboxEvent> fetchPending() {
-        return outboxEventRepository.findTop100ByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus.PENDING);
+        return outboxEventRepository.findByStatusOrderByCreatedAtAsc(OutboxEvent.OutboxStatus.PENDING);
     }
 
     @Transactional

@@ -14,8 +14,6 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,34 +43,35 @@ public class AIResearchOrchestrator {
         AIResearchResult cached = getFromCache(cacheKey);
         if (cached != null) return cached;
 
-        // 1·2·3 을 모두 병렬 실행 (LLM 분석 대기 없이 즉시 시작)
-        // - ES: raw query로 바로 검색 (LLM 완료 불필요)
-        // - Tavily: raw query로 바로 호출 (rate-limit 고려 시 분석 결과 활용은 AI 요약 단계에서)
-        // - LLM 분석: intentType, aiKeywords 추출 → 이벤트 발행·히스토리 저장에만 사용
-        CompletableFuture<SearchQueryAnalysis> analysisFuture =
-                CompletableFuture.supplyAsync(() -> queryAnalyzer.analyze(query, memberId));
-
-        CompletableFuture<List<FacilitySearchDocument>> internalFuture =
-                CompletableFuture.supplyAsync(() ->
-                        hybridSearch.search(List.of(query), lat, lng, 5.0));
-
-        CompletableFuture<WebSearchResult> webFuture =
-                CompletableFuture.supplyAsync(() ->
-                        tavilySearch.search(query, ""));
-
-        List<FacilitySearchDocument> internal;
-        WebSearchResult web;
+        // 1. LLM 분석: intentType, keywords, needsWebSearch 추출
         SearchQueryAnalysis analysis;
         try {
-            internal = internalFuture.get(5, TimeUnit.SECONDS);
-            web = webFuture.get(4, TimeUnit.SECONDS);
-            // 분석은 이벤트 발행용; 이미 완료됐으면 사용, 타임아웃 시 fallback
-            analysis = analysisFuture.getNow(SearchQueryAnalysis.fallback(query));
+            analysis = queryAnalyzer.analyze(query, memberId);
         } catch (Exception e) {
-            log.warn("[Orchestrator] 병렬 실행 타임아웃: {}", e.getMessage());
-            internal = List.of();
-            web = WebSearchResult.empty();
+            log.warn("[Orchestrator] 쿼리 분석 실패: {}", e.getMessage());
             analysis = SearchQueryAnalysis.fallback(query);
+        }
+
+        // 2. 내부 하이브리드 검색
+        List<FacilitySearchDocument> internal;
+        try {
+            internal = hybridSearch.search(List.of(query), lat, lng, 5.0);
+        } catch (Exception e) {
+            log.warn("[Orchestrator] 내부 검색 실패: {}", e.getMessage());
+            internal = List.of();
+        }
+
+        // 3. Tavily 웹 검색 (needsWebSearch=true 일 때만)
+        WebSearchResult web;
+        if (analysis.isNeedsWebSearch()) {
+            try {
+                web = tavilySearch.search(query, "");
+            } catch (Exception e) {
+                log.warn("[Orchestrator] Tavily 검색 실패: {}", e.getMessage());
+                web = WebSearchResult.empty();
+            }
+        } else {
+            web = WebSearchResult.empty();
         }
 
         // 3. 내부 결과를 AISearchResult로 변환 + 사진 enrichment

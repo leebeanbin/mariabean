@@ -86,7 +86,7 @@ spring:
         options:
           model: ${ollamaEmbedModel:nomic-embed-text}
     tavily:
-      api-key: ${TAVILY_API_KEY:}
+      api-key: ${TAVILY_API_KEY}
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}

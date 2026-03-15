@@ -68,8 +68,9 @@ class HybridSearchServiceTest {
         FacilitySearchDocument doc1 = doc("f-1", "강남 정형외과");
         FacilitySearchDocument doc2 = doc("f-2", "강남 내과");
 
+        SearchHits<FacilitySearchDocument> hits = mockHits(List.of(doc1, doc2));
         given(elasticsearchOperations.search(any(Query.class), eq(FacilitySearchDocument.class)))
-                .willReturn(mockHits(List.of(doc1, doc2)));
+                .willReturn(hits);
         given(embeddingModel.embed(anyString())).willReturn(new float[]{0.1f, 0.2f});
 
         // when
@@ -104,8 +105,9 @@ class HybridSearchServiceTest {
         // given
         FacilitySearchDocument doc = doc("f-3", "종로 안과");
 
+        SearchHits<FacilitySearchDocument> hits = mockHits(List.of(doc));
         given(elasticsearchOperations.search(any(Query.class), eq(FacilitySearchDocument.class)))
-                .willReturn(mockHits(List.of(doc)));
+                .willReturn(hits);
         given(embeddingModel.embed(anyString())).willThrow(new RuntimeException("Ollama 미응답"));
 
         // when
@@ -121,8 +123,9 @@ class HybridSearchServiceTest {
     @DisplayName("키워드 목록이 비어 있으면 빈 결과를 우아하게 반환한다")
     void search_emptyKeywords_returnsEmpty() {
         // given
+        SearchHits<FacilitySearchDocument> emptyHits = mockHits(List.of());
         given(elasticsearchOperations.search(any(Query.class), eq(FacilitySearchDocument.class)))
-                .willReturn(mockHits(List.of()));
+                .willReturn(emptyHits);
         given(embeddingModel.embed(anyString())).willReturn(new float[]{});
 
         // when

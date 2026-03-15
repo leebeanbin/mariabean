@@ -1,9 +1,14 @@
 package com.mariabean.reservation.search.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mariabean.reservation.auth.infrastructure.config.SecurityConfig;
 import com.mariabean.reservation.auth.infrastructure.security.JwtAuthenticationFilter;
+import com.mariabean.reservation.global.config.DataConfig;
+import com.mariabean.reservation.global.config.JpaAuditingConfig;
+import com.mariabean.reservation.global.config.MongoAuditingConfig;
 import com.mariabean.reservation.search.application.*;
 import com.mariabean.reservation.search.application.dto.*;
+import com.mariabean.reservation.support.TestSecurityConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.http.MediaType;
@@ -30,9 +36,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(
         controllers = AIResearchController.class,
-        excludeFilters = @ComponentScan.Filter(
-                type = FilterType.ASSIGNABLE_TYPE,
-                classes = JwtAuthenticationFilter.class))
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class),
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = SecurityConfig.class),
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JpaAuditingConfig.class),
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = MongoAuditingConfig.class),
+                @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = DataConfig.class)
+        })
+@Import(TestSecurityConfig.class)
 class AIResearchControllerTest {
 
     @Autowired

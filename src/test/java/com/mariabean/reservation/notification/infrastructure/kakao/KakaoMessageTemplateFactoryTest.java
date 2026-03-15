@@ -17,7 +17,7 @@ class KakaoMessageTemplateFactoryTest {
     @Test
     @DisplayName("결제 알림 텍스트/변수와 알림톡 요청 DTO를 생성한다")
     void paymentTemplateAndAlimTalkPayload() {
-        NotificationRecipient recipient = new NotificationRecipient(1L, "kim", "01012341234", "kakao_1");
+        NotificationRecipient recipient = new NotificationRecipient(1L, "kim", null, "01012341234", "kakao_1");
         String text = factory.paymentConfirmationText(11L, BigDecimal.valueOf(12000), "KAKAO_PAY");
         Map<String, String> vars = factory.paymentConfirmationVariables(11L, BigDecimal.valueOf(12000), "KAKAO_PAY");
 
@@ -35,7 +35,7 @@ class KakaoMessageTemplateFactoryTest {
     @Test
     @DisplayName("예약 취소 텍스트와 talk_message 요청 DTO를 생성한다")
     void cancellationTemplateAndTalkPayload() {
-        NotificationRecipient recipient = new NotificationRecipient(2L, "lee", "01056785678", "kakao_uuid_2");
+        NotificationRecipient recipient = new NotificationRecipient(2L, "lee", null, "01056785678", "kakao_uuid_2");
         String text = factory.reservationCancellationText(55L);
 
         KakaoPayloads.TalkMessageRequest req = factory.talkMessageRequest(recipient, new ObjectMapper(), text);
@@ -48,7 +48,7 @@ class KakaoMessageTemplateFactoryTest {
     @Test
     @DisplayName("NCP SENS 알림톡 요청 DTO를 생성한다")
     void ncpAlimTalkPayload() {
-        NotificationRecipient recipient = new NotificationRecipient(3L, "park", "01000001111", "kakao_3");
+        NotificationRecipient recipient = new NotificationRecipient(3L, "park", null, "01000001111", "kakao_3");
         KakaoPayloads.NcpAlimTalkRequest req = factory.ncpAlimTalkRequest(
                 recipient, "@mariabean", "TPL001", "테스트 메시지");
 

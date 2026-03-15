@@ -14,12 +14,6 @@ java {
 	}
 }
 
-// Spring AI BOM (1.0.0 GA)
-dependencyManagement {
-	imports {
-		mavenBom 'org.springframework.ai:spring-ai-bom:1.0.0'
-	}
-}
 
 configurations {
 	compileOnly {
@@ -29,9 +23,14 @@ configurations {
 
 repositories {
 	mavenCentral()
+	// Spring AI GA는 Maven Central에 있으나 일부 환경에서 BOM 해석 실패 시 fallback
+	maven { url 'https://repo.spring.io/milestone' }
 }
 
 dependencies {
+	// Spring AI BOM — Gradle 네이티브 platform() 방식 (io.spring.dependency-management 충돌 우회)
+	implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
+
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -78,7 +77,8 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 
 	// Spring AI — Ollama (chat + embedding via nomic-embed-text + llava:7b vision)
-	implementation 'org.springframework.ai:spring-ai-ollama-spring-boot-starter'
+	// Spring AI 1.0.0 BOM 실제 아티팩트명: spring-ai-starter-model-ollama
+	implementation 'org.springframework.ai:spring-ai-starter-model-ollama'
 	// Tavily는 TavilyWebSearchService에서 RestTemplate으로 직접 호출 (별도 스타터 불필요)
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'

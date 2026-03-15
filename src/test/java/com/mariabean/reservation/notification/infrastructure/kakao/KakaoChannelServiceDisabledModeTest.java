@@ -17,7 +17,7 @@ class KakaoChannelServiceDisabledModeTest {
         KakaoMessagingProperties properties = new KakaoMessagingProperties();
         KakaoAlimTalkNotificationService service = new KakaoAlimTalkNotificationService(
                 properties, new ObjectMapper(), new KakaoMessageTemplateFactory());
-        NotificationRecipient recipient = new NotificationRecipient(1L, "kim", "01012341234", "kakao_1");
+        NotificationRecipient recipient = new NotificationRecipient(1L, "kim", null, "01012341234", "kakao_1");
 
         boolean sent = service.sendPaymentConfirmation(recipient, 1L, BigDecimal.TEN, "KAKAO_PAY");
 
@@ -30,7 +30,7 @@ class KakaoChannelServiceDisabledModeTest {
         KakaoMessagingProperties properties = new KakaoMessagingProperties();
         KakaoTalkMessageNotificationService service = new KakaoTalkMessageNotificationService(
                 properties, new ObjectMapper(), new KakaoMessageTemplateFactory());
-        NotificationRecipient recipient = new NotificationRecipient(2L, "lee", "01056785678", "kakao_2");
+        NotificationRecipient recipient = new NotificationRecipient(2L, "lee", null, "01056785678", "kakao_2");
 
         boolean sent = service.sendReservationCancellation(recipient, 2L);
 

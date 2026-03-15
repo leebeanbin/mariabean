@@ -1,0 +1,410 @@
+### ══════════════════════════════════════════════════════════════════════
+### MariBean API Test Suite — IntelliJ HTTP Client
+### 실행 순서: 위에서 아래로 순서대로 실행 (변수 의존성 있음)
+### 환경: IntelliJ > Tools > HTTP Client > Manage Environments
+### ══════════════════════════════════════════════════════════════════════
+
+@baseUrl = http://localhost:8080
+@adminToken = REPLACE_WITH_ADMIN_JWT
+@userToken  = REPLACE_WITH_USER_JWT
+
+### ─────────────────────────────────────────────────────────────────────
+### 0. 인프라 헬스체크
+### ─────────────────────────────────────────────────────────────────────
+
+### [0-1] Spring Boot Actuator Health
+GET {{baseUrl}}/actuator/health
+Accept: application/json
+
+### [0-2] Elasticsearch 클러스터 상태 (직접 확인)
+GET http://localhost:9200/_cluster/health?pretty
+Accept: application/json
+
+### [0-3] Ollama 모델 목록 확인 (ollama-init 완료 후)
+# qwen2.5:7b, nomic-embed-text, llava:7b 3개 모두 있어야 AI 기능 동작
+GET http://localhost:11434/api/tags
+Accept: application/json
+
+### [0-4] Ollama 간단 chat 연결 테스트
+POST http://localhost:11434/api/generate
+Content-Type: application/json
+
+{
+  "model": "qwen2.5:7b",
+  "prompt": "안녕하세요, 한 문장으로 대답해주세요.",
+  "stream": false
+}
+
+### ─────────────────────────────────────────────────────────────────────
+### 1. 인증 (Auth)
+### ─────────────────────────────────────────────────────────────────────
+
+### [1-1] 토큰 갱신 (Refresh Token → 새 Access Token)
+# IntelliJ Run Config에서 refreshToken 환경변수 확인
+POST {{baseUrl}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "REPLACE_WITH_REFRESH_TOKEN"
+}
+
+### [1-2] 로그아웃
+POST {{baseUrl}}/api/v1/auth/logout
+Authorization: Bearer {{userToken}}
+
+### ─────────────────────────────────────────────────────────────────────
+### 2. 시설(Facility) CRUD
+### ─────────────────────────────────────────────────────────────────────
+
+### [2-1] 시설 목록 조회 (PUBLIC)
+GET {{baseUrl}}/api/v1/facilities?page=0&size=10
+Accept: application/json
+
+### [2-2] Kakao 장소 검색으로 placeId 얻기 (지도 API 연동 확인)
+# kakaoRestApiKey 설정 필요 — kakao:local:rest-api-key
+GET {{baseUrl}}/api/v1/facilities/places/search?query=강남역 내과
+Authorization: Bearer {{adminToken}}
+Accept: application/json
+
+### [2-3] 시설 생성 (ADMIN)
+# @name createFacility
+POST {{baseUrl}}/api/v1/facilities
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "테스트 내과의원",
+  "category": "HOSPITAL",
+  "address": "서울특별시 강남구 테헤란로 123",
+  "latitude": 37.4983,
+  "longitude": 127.0279,
+  "description": "테스트용 내과의원입니다.",
+  "specialties": ["내과", "소화기내과"],
+  "placeId": "test-place-001"
+}
+
+### [2-4] 생성된 시설 단건 조회
+# facilityId를 [2-3] 응답에서 복사
+@facilityId = REPLACE_WITH_FACILITY_ID
+GET {{baseUrl}}/api/v1/facilities/{{facilityId}}
+Accept: application/json
+
+### [2-5] 시설 수정 (ADMIN)
+PUT {{baseUrl}}/api/v1/facilities/{{facilityId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "테스트 내과의원 (수정)",
+  "category": "HOSPITAL",
+  "address": "서울특별시 강남구 테헤란로 123",
+  "latitude": 37.4983,
+  "longitude": 127.0279,
+  "description": "수정된 설명",
+  "specialties": ["내과", "소화기내과", "일반내과"]
+}
+
+### ─────────────────────────────────────────────────────────────────────
+### 3. 리소스(ResourceItem) CRUD
+### ─────────────────────────────────────────────────────────────────────
+
+### [3-1] 리소스 생성 (ADMIN)
+# @name createResource
+POST {{baseUrl}}/api/v1/facilities/{{facilityId}}/resources
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "진료실 A",
+  "resourceType": "ROOM",
+  "limitCapacity": 1,
+  "floor": 1,
+  "location": "1층 우측",
+  "customAttributes": {
+    "pricePerHour": 10000,
+    "equipment": ["혈압계", "체온계"]
+  }
+}
+
+### [3-2] 리소스 목록 조회
+@resourceId = REPLACE_WITH_RESOURCE_ID
+GET {{baseUrl}}/api/v1/facilities/{{facilityId}}/resources
+Accept: application/json
+
+### ─────────────────────────────────────────────────────────────────────
+### 4. 예약(Reservation) 흐름
+### ─────────────────────────────────────────────────────────────────────
+
+### [4-1] 가용 시간대 조회 (PUBLIC)
+GET {{baseUrl}}/api/v1/public/reservations/availability?resourceItemId={{resourceId}}&date=2026-03-20
+Accept: application/json
+
+### [4-2] 예약 생성
+# @name createReservation
+POST {{baseUrl}}/api/v1/reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "resourceItemId": "{{resourceId}}",
+  "startTime": "2026-03-20T10:00:00",
+  "endTime": "2026-03-20T11:00:00"
+}
+
+### [4-3] 내 예약 목록
+@reservationId = REPLACE_WITH_RESERVATION_ID
+GET {{baseUrl}}/api/v1/reservations/my
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [4-4] 예약 상세
+GET {{baseUrl}}/api/v1/reservations/{{reservationId}}
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [4-5] 예약 취소
+DELETE {{baseUrl}}/api/v1/reservations/{{reservationId}}
+Authorization: Bearer {{userToken}}
+
+### ─────────────────────────────────────────────────────────────────────
+### 5. 결제(Payment) 흐름
+### ─────────────────────────────────────────────────────────────────────
+
+### [5-1] 결제 준비 (StubPg — 로컬 테스트용)
+# amount는 서버에서 pricePerHour × 시간으로 재계산 — 틀리면 P006 에러
+# @name readyPayment
+POST {{baseUrl}}/api/v1/payments/ready
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "reservationId": {{reservationId}},
+  "provider": "STUB",
+  "amount": 10000
+}
+
+### [5-2] 금액 조작 시도 → P006 PAYMENT_AMOUNT_MISMATCH 확인
+POST {{baseUrl}}/api/v1/payments/ready
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "reservationId": {{reservationId}},
+  "provider": "STUB",
+  "amount": 1
+}
+
+### [5-3] 결제 승인 (StubPg pgToken)
+@paymentId = REPLACE_WITH_PAYMENT_ID
+POST {{baseUrl}}/api/v1/payments/approve
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "paymentId": {{paymentId}},
+  "pgToken": "stub-pg-token-test"
+}
+
+### [5-4] 결제 상태 조회
+GET {{baseUrl}}/api/v1/payments/{{paymentId}}
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [5-5] 결제 취소
+DELETE {{baseUrl}}/api/v1/payments/{{paymentId}}
+Authorization: Bearer {{userToken}}
+
+### ─────────────────────────────────────────────────────────────────────
+### 6. 검색 (Search)
+### ─────────────────────────────────────────────────────────────────────
+
+### [6-1] 기본 키워드 검색 (ES BM25)
+GET {{baseUrl}}/api/v1/search?query=내과&lat=37.4983&lng=127.0279&radius=3.0
+Accept: application/json
+
+### [6-2] 병원 특화 검색 (HIRA 진료과 코드)
+GET {{baseUrl}}/api/v1/search/hospitals?lat=37.4983&lng=127.0279&query=내과&specialties=01&openNow=false&page=0&size=10
+Accept: application/json
+
+### [6-3] AI 리서치 검색 (Ollama + Tavily + ES kNN 하이브리드)
+# Ollama가 실행 중이어야 함 — 첫 요청은 모델 로딩으로 10~30s 소요
+GET {{baseUrl}}/api/v1/search/research?query=강남 내과&lat=37.4983&lng=127.0279
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [6-4] AI 리서치 SSE 스트리밍 (3단계 결과 순차 전송)
+# IntelliJ HTTP Client는 SSE 스트리밍을 지원하지 않음
+# → curl 명령 사용: curl -N "http://localhost:8080/api/v1/search/research/stream?query=강남내과&lat=37.4983&lng=127.0279" -H "Authorization: Bearer YOUR_TOKEN"
+GET {{baseUrl}}/api/v1/search/research/stream?query=강남 내과&lat=37.4983&lng=127.0279
+Authorization: Bearer {{userToken}}
+Accept: text/event-stream
+
+### ─────────────────────────────────────────────────────────────────────
+### 7. AI Vision 검색 (이미지 → 장소 인식)
+### ─────────────────────────────────────────────────────────────────────
+
+### [7-1] 이미지 URL로 Vision 검색 (llava:7b)
+# HTTPS URL + 이미지 확장자 필수 (SSRF 방지)
+POST {{baseUrl}}/api/v1/search/vision/url
+Content-Type: application/json
+
+{
+  "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Gyeongbokgung.jpg/1280px-Gyeongbokgung.jpg",
+  "lat": 37.5796,
+  "lng": 126.9770
+}
+
+### [7-2] SSRF 방지 확인 — 사설 IP 차단 (400 응답 기대)
+POST {{baseUrl}}/api/v1/search/vision/url
+Content-Type: application/json
+
+{
+  "imageUrl": "http://192.168.1.1/image.jpg",
+  "lat": 37.5,
+  "lng": 127.0
+}
+
+### [7-3] SSRF 방지 확인 — HTTP 차단 (400 응답 기대)
+POST {{baseUrl}}/api/v1/search/vision/url
+Content-Type: application/json
+
+{
+  "imageUrl": "http://example.com/photo.jpg",
+  "lat": 37.5,
+  "lng": 127.0
+}
+
+### ─────────────────────────────────────────────────────────────────────
+### 8. 개인 메모 (Antigravity)
+### ─────────────────────────────────────────────────────────────────────
+
+### [8-1] 메모 저장
+# @name createMemo
+POST {{baseUrl}}/api/v1/search/memo
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "placeId": "test-place-001",
+  "placeName": "테스트 내과의원",
+  "content": "친절하고 대기 짧음. 다음에 또 오기",
+  "boostScore": 4
+}
+
+### [8-2] 메모 저장 후 AI 검색 — 해당 장소 상위 노출 확인
+GET {{baseUrl}}/api/v1/search/research?query=내과&lat=37.4983&lng=127.0279
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [8-3] 메모 조회
+@memoId = REPLACE_WITH_MEMO_ID
+GET {{baseUrl}}/api/v1/search/memo?placeId=test-place-001
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [8-4] 메모 수정
+PUT {{baseUrl}}/api/v1/search/memo/{{memoId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "content": "재방문 완료. 역시 좋음",
+  "boostScore": 5
+}
+
+### [8-5] 메모 삭제
+DELETE {{baseUrl}}/api/v1/search/memo/{{memoId}}
+Authorization: Bearer {{userToken}}
+
+### ─────────────────────────────────────────────────────────────────────
+### 9. 검색 클릭 피드백 (랭킹 학습)
+### ─────────────────────────────────────────────────────────────────────
+
+### [9-1] 클릭 이벤트 기록 → Redis user:pref:{memberId} ZSet 증가 확인
+POST {{baseUrl}}/api/v1/search/research/click
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "placeId": "test-place-001",
+  "query": "강남 내과",
+  "rank": 1
+}
+
+### ─────────────────────────────────────────────────────────────────────
+### 10. 지도 API (Kakao + Google Maps)
+### ─────────────────────────────────────────────────────────────────────
+
+### [10-1] Kakao 장소 검색 (kakaoRestApiKey 필요)
+GET {{baseUrl}}/api/v1/facilities/places/search?query=강남역 맛집
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### [10-2] 주변 시설 검색 (geo_distance 필터)
+GET {{baseUrl}}/api/v1/search?query=병원&lat=37.4983&lng=127.0279&radius=2.0
+Accept: application/json
+
+### [10-3] Kakao 경로 안내 (Kakao Mobility API)
+# kakaoRestApiKey 필요 — KakaoMobilityClient 호출
+GET {{baseUrl}}/api/v1/directions?originLat=37.4983&originLng=127.0279&destLat=37.5665&destLng=126.9780
+Authorization: Bearer {{userToken}}
+Accept: application/json
+
+### ─────────────────────────────────────────────────────────────────────
+### 11. Admin 엔드포인트
+### ─────────────────────────────────────────────────────────────────────
+
+### [11-1] ES 임베딩 전체 재색인 (최초 1회 또는 스키마 변경 시)
+# Ollama nomic-embed-text 모델 필요 — 시설 수에 따라 수 분 소요
+GET {{baseUrl}}/api/v1/admin/search/reindex
+Authorization: Bearer {{adminToken}}
+Accept: application/json
+
+### [11-2] Actuator 메트릭 (ADMIN 전용)
+GET {{baseUrl}}/actuator/metrics
+Authorization: Bearer {{adminToken}}
+Accept: application/json
+
+### [11-3] Prometheus 메트릭
+GET {{baseUrl}}/actuator/prometheus
+Authorization: Bearer {{adminToken}}
+
+### ─────────────────────────────────────────────────────────────────────
+### 12. Rate Limiting 확인 (Bucket4j)
+### ─────────────────────────────────────────────────────────────────────
+
+### [12-1] 검색 API 연속 호출 → 429 TooManyRequests 확인
+# IntelliJ에서 이 요청을 빠르게 10회 이상 반복하면 429 응답 확인 가능
+GET {{baseUrl}}/api/v1/search?query=내과&lat=37.4983&lng=127.0279
+Accept: application/json
+
+### ─────────────────────────────────────────────────────────────────────
+### 13. 이메일 (Gmail)
+### ─────────────────────────────────────────────────────────────────────
+
+### [13-1] 이메일 템플릿 목록 (ADMIN)
+GET {{baseUrl}}/api/v1/admin/emails/templates
+Authorization: Bearer {{adminToken}}
+Accept: application/json
+
+### [13-2] 즉시 발송 테스트 (ADMIN)
+POST {{baseUrl}}/api/v1/admin/emails/send
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "to": "test@example.com",
+  "subject": "MariBean 테스트 메일",
+  "body": "인프라 테스트용 이메일입니다."
+}
+
+### ─────────────────────────────────────────────────────────────────────
+### 14. Swagger UI
+### ─────────────────────────────────────────────────────────────────────
+
+### [14-1] OpenAPI 스펙 확인
+GET {{baseUrl}}/v3/api-docs
+Accept: application/json
+
+### [14-2] Swagger UI (브라우저에서 열기)
+# http://localhost:8080/swagger-ui.html

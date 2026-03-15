@@ -72,7 +72,8 @@ public class SecurityConfig {
                                                 .permitAll()
                                                 .requestMatchers(org.springframework.http.HttpMethod.POST,
                                                                 "/api/v1/search/vision",
-                                                                "/api/v1/search/vision/url")
+                                                                "/api/v1/search/vision/url",
+                                                                "/api/v1/search/research/click")
                                                 .permitAll()
                                                 .requestMatchers("/api/v1/admin/search/**").hasRole("ADMIN")
                                                 .anyRequest().authenticated())

@@ -5,7 +5,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.model.Media;
+import org.springframework.ai.content.Media;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 import org.springframework.web.client.RestTemplate;
@@ -35,10 +36,11 @@ public class VisionLocationAnalyzerService {
 
     public VisionSearchResult analyzeImage(byte[] imageBytes, String mimeType) {
         try {
-            // Spring AI 1.0.0: UserMessage with media list
-            UserMessage msg = new UserMessage(
-                    VISION_PROMPT,
-                    List.of(new Media(MimeType.valueOf(mimeType), imageBytes)));
+            // Spring AI 1.0.0: UserMessage.builder() — constructor is private
+            UserMessage msg = UserMessage.builder()
+                    .text(VISION_PROMPT)
+                    .media(new Media(MimeType.valueOf(mimeType), new ByteArrayResource(imageBytes)))
+                    .build();
 
             String response = chatClient.prompt()
                     .messages(msg)

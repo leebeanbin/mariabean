@@ -36,7 +36,7 @@ class KakaoNotificationRouterTest {
     void sendPaymentConfirmation_alimTalkSuccess() {
         Long memberId = 1L;
         Long reservationId = 10L;
-        NotificationRecipient recipient = new NotificationRecipient(memberId, "kim", "01012341234", "kakao_123");
+        NotificationRecipient recipient = new NotificationRecipient(memberId, "kim", null, "01012341234", "kakao_123");
         given(recipientReader.findByMemberId(memberId)).willReturn(Optional.of(recipient));
         given(alimTalkService.sendPaymentConfirmation(recipient, reservationId, BigDecimal.TEN, "KAKAO_PAY"))
                 .willReturn(true);
@@ -51,7 +51,7 @@ class KakaoNotificationRouterTest {
     void sendPaymentConfirmation_fallbackToTalkMessage() {
         Long memberId = 2L;
         Long reservationId = 20L;
-        NotificationRecipient recipient = new NotificationRecipient(memberId, "lee", "01056785678", "kakao_456");
+        NotificationRecipient recipient = new NotificationRecipient(memberId, "lee", null, "01056785678", "kakao_456");
         given(recipientReader.findByMemberId(memberId)).willReturn(Optional.of(recipient));
         given(alimTalkService.sendPaymentConfirmation(recipient, reservationId, BigDecimal.ONE, "TOSS_PAY"))
                 .willReturn(false);
