@@ -19,17 +19,12 @@ public class TavilyWebSearchService {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${spring.ai.tavily.api-key:}")
+    @Value("${spring.ai.tavily.api-key}")
     private String tavilyApiKey;
 
     private static final String TAVILY_URL = "https://api.tavily.com/search";
 
     public WebSearchResult search(String query, String locationHint) {
-        if (tavilyApiKey == null || tavilyApiKey.isBlank()) {
-            log.debug("[Tavily] API 키 없음 — 웹 검색 건너뜀");
-            return WebSearchResult.empty();
-        }
-
         try {
             RestTemplate restTemplate = new RestTemplate();
             String fullQuery = query + (locationHint != null && !locationHint.isBlank()

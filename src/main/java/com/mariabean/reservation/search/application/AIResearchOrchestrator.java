@@ -61,16 +61,12 @@ public class AIResearchOrchestrator {
             internal = List.of();
         }
 
-        // 3. Tavily 웹 검색 (needsWebSearch=true 일 때만)
+        // 3. Tavily 웹 검색 — 위치 기반 검색에 항상 인용·웹 정보 포함
         WebSearchResult web;
-        if (analysis.isNeedsWebSearch()) {
-            try {
-                web = tavilySearch.search(query, "");
-            } catch (Exception e) {
-                log.warn("[Orchestrator] Tavily 검색 실패: {}", e.getMessage());
-                web = WebSearchResult.empty();
-            }
-        } else {
+        try {
+            web = tavilySearch.search(query, analysis.getLocationHint());
+        } catch (Exception e) {
+            log.warn("[Orchestrator] Tavily 검색 실패: {}", e.getMessage());
             web = WebSearchResult.empty();
         }
 

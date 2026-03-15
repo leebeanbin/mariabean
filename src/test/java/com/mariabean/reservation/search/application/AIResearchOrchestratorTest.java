@@ -82,6 +82,7 @@ class AIResearchOrchestratorTest {
         given(queryAnalyzer.analyze(anyString(), any())).willReturn(analysis(false));
         given(hybridSearch.search(anyList(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(List.of(esDoc("f-1")));
+        given(tavilySearch.search(anyString(), anyString())).willReturn(WebSearchResult.empty());
         given(photoEnricher.fetchPhotos(anyString(), isNull(), anyList())).willReturn(List.of());
         given(memoService.loadMemos(eq(1L), anyList())).willReturn(Map.of());
 
@@ -109,6 +110,7 @@ class AIResearchOrchestratorTest {
         given(queryAnalyzer.analyze(anyString(), any())).willReturn(analysis(false));
         given(hybridSearch.search(anyList(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(List.of());
+        given(tavilySearch.search(anyString(), anyString())).willReturn(WebSearchResult.empty());
         given(memoService.loadMemos(isNull(), anyList())).willReturn(Map.of());
         given(ranker.rankWithMemo(anyList(), anyMap(), anyDouble(), anyDouble(), isNull()))
                 .willReturn(List.of());
@@ -124,14 +126,15 @@ class AIResearchOrchestratorTest {
     }
 
     @Test
-    @DisplayName("analysis.needsWebSearch=false이면 Tavily는 호출되지 않는다")
-    void research_tavilyNotNeeded_webSearchSkipped() throws Exception {
+    @DisplayName("Tavily는 항상 호출되어 웹 결과·인용이 포함된다")
+    void research_tavilyAlwaysCalled() throws Exception {
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
         given(valueOperations.get(anyString())).willReturn(null);
 
         given(queryAnalyzer.analyze(anyString(), any())).willReturn(analysis(false));
         given(hybridSearch.search(anyList(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(List.of());
+        given(tavilySearch.search(anyString(), anyString())).willReturn(WebSearchResult.empty());
         given(memoService.loadMemos(any(), anyList())).willReturn(Map.of());
         given(ranker.rankWithMemo(anyList(), anyMap(), anyDouble(), anyDouble(), any()))
                 .willReturn(List.of());
@@ -141,8 +144,8 @@ class AIResearchOrchestratorTest {
         // when
         orchestrator.research("내과", 37.5, 127.0, 1L);
 
-        // then
-        verify(tavilySearch, never()).search(anyString(), anyString());
+        // then: Tavily는 needsWebSearch 관계없이 항상 호출된다
+        verify(tavilySearch).search(anyString(), anyString());
     }
 
     @Test
@@ -180,6 +183,7 @@ class AIResearchOrchestratorTest {
         given(queryAnalyzer.analyze(anyString(), isNull())).willReturn(analysis(false));
         given(hybridSearch.search(anyList(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(List.of());
+        given(tavilySearch.search(anyString(), anyString())).willReturn(WebSearchResult.empty());
         given(memoService.loadMemos(isNull(), anyList())).willReturn(Map.of());
         given(ranker.rankWithMemo(anyList(), anyMap(), anyDouble(), anyDouble(), isNull()))
                 .willReturn(List.of());
