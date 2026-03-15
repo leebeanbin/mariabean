@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.InetAddress;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -19,6 +22,9 @@ import java.util.List;
 public class VisionLocationAnalyzerService {
 
     private final ChatClient chatClient;
+
+    private static final Set<String> ALLOWED_IMAGE_EXTENSIONS =
+            Set.of(".jpg", ".jpeg", ".png", ".gif", ".webp");
 
     private static final String VISION_PROMPT = """
             이미지의 장소·건물·랜드마크를 분석하세요.
@@ -48,16 +54,89 @@ public class VisionLocationAnalyzerService {
 
     public VisionSearchResult analyzeImageUrl(String imageUrl) {
         try {
+            validateImageUrl(imageUrl);
             RestTemplate restTemplate = new RestTemplate();
             byte[] imageBytes = restTemplate.getForObject(imageUrl, byte[].class);
             if (imageBytes == null) return fallbackVisionResult();
 
             String mimeType = detectMimeType(imageUrl);
             return analyzeImage(imageBytes, mimeType);
+        } catch (IllegalArgumentException e) {
+            log.warn("[Vision] URL 검증 실패: {}", e.getMessage());
+            return fallbackVisionResult();
         } catch (Exception e) {
             log.warn("[Vision] URL 이미지 분석 실패: {}", e.getMessage());
             return fallbackVisionResult();
         }
+    }
+
+    /**
+     * SSRF 방지: HTTPS 전용, 사설 IP 차단, 이미지 확장자 허용 목록 검증.
+     */
+    private void validateImageUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new IllegalArgumentException("URL이 비어있습니다");
+        }
+        URI uri;
+        try {
+            uri = URI.create(imageUrl);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("URL 형식이 잘못되었습니다: " + imageUrl);
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme())) {
+            throw new IllegalArgumentException("HTTPS URL만 허용됩니다");
+        }
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("URL에 호스트가 없습니다");
+        }
+        // DNS 조회 전 리터럴 사설 IP 차단
+        if (isPrivateHost(host)) {
+            throw new IllegalArgumentException("내부 네트워크 주소는 허용되지 않습니다");
+        }
+        // DNS 조회 후 실제 IP가 사설 범위인지 재확인 (DNS rebinding 방지)
+        try {
+            InetAddress resolved = InetAddress.getByName(host);
+            if (resolved.isLoopbackAddress() || resolved.isSiteLocalAddress()
+                    || resolved.isLinkLocalAddress() || resolved.isAnyLocalAddress()) {
+                throw new IllegalArgumentException("내부 네트워크 주소로 해석되는 호스트는 허용되지 않습니다");
+            }
+        } catch (java.net.UnknownHostException e) {
+            throw new IllegalArgumentException("호스트를 찾을 수 없습니다: " + host);
+        }
+        // 이미지 확장자 허용 목록
+        String path = uri.getPath() != null ? uri.getPath().toLowerCase() : "";
+        boolean hasAllowedExtension = ALLOWED_IMAGE_EXTENSIONS.stream()
+                .anyMatch(path::endsWith);
+        if (!hasAllowedExtension) {
+            throw new IllegalArgumentException("허용된 이미지 확장자가 아닙니다 (jpg/jpeg/png/gif/webp)");
+        }
+    }
+
+    private boolean isPrivateHost(String host) {
+        String lower = host.toLowerCase();
+        return lower.equals("localhost")
+                || lower.equals("::1")
+                || lower.startsWith("127.")
+                || lower.startsWith("10.")
+                || lower.startsWith("192.168.")
+                || (lower.startsWith("172.") && isPrivate172(lower))
+                || lower.endsWith(".local")
+                || lower.endsWith(".internal");
+    }
+
+    private boolean isPrivate172(String host) {
+        // 172.16.0.0/12 (172.16.x.x ~ 172.31.x.x)
+        try {
+            String[] parts = host.split("\\.");
+            if (parts.length >= 2) {
+                int second = Integer.parseInt(parts[1]);
+                return second >= 16 && second <= 31;
+            }
+        } catch (NumberFormatException ignored) {
+            // not a numeric IP, let DNS rebinding check handle it
+        }
+        return false;
     }
 
     private VisionSearchResult parseVisionResult(String json) {

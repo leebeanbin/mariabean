@@ -45,29 +45,34 @@ public class AIResearchOrchestrator {
         AIResearchResult cached = getFromCache(cacheKey);
         if (cached != null) return cached;
 
-        // 1. 쿼리 분석
-        SearchQueryAnalysis analysis = queryAnalyzer.analyze(query, memberId);
+        // 1·2·3 을 모두 병렬 실행 (LLM 분석 대기 없이 즉시 시작)
+        // - ES: raw query로 바로 검색 (LLM 완료 불필요)
+        // - Tavily: raw query로 바로 호출 (rate-limit 고려 시 분석 결과 활용은 AI 요약 단계에서)
+        // - LLM 분석: intentType, aiKeywords 추출 → 이벤트 발행·히스토리 저장에만 사용
+        CompletableFuture<SearchQueryAnalysis> analysisFuture =
+                CompletableFuture.supplyAsync(() -> queryAnalyzer.analyze(query, memberId));
 
-        // 2. 병렬 실행: 내부 검색 + 웹 검색
         CompletableFuture<List<FacilitySearchDocument>> internalFuture =
                 CompletableFuture.supplyAsync(() ->
-                        hybridSearch.search(analysis.getKeywords(), lat, lng, 5.0));
+                        hybridSearch.search(List.of(query), lat, lng, 5.0));
 
         CompletableFuture<WebSearchResult> webFuture =
                 CompletableFuture.supplyAsync(() ->
-                        analysis.isNeedsWebSearch()
-                                ? tavilySearch.search(query, analysis.getLocationHint())
-                                : WebSearchResult.empty());
+                        tavilySearch.search(query, ""));
 
         List<FacilitySearchDocument> internal;
         WebSearchResult web;
+        SearchQueryAnalysis analysis;
         try {
             internal = internalFuture.get(5, TimeUnit.SECONDS);
             web = webFuture.get(4, TimeUnit.SECONDS);
+            // 분석은 이벤트 발행용; 이미 완료됐으면 사용, 타임아웃 시 fallback
+            analysis = analysisFuture.getNow(SearchQueryAnalysis.fallback(query));
         } catch (Exception e) {
             log.warn("[Orchestrator] 병렬 실행 타임아웃: {}", e.getMessage());
             internal = List.of();
             web = WebSearchResult.empty();
+            analysis = SearchQueryAnalysis.fallback(query);
         }
 
         // 3. 내부 결과를 AISearchResult로 변환 + 사진 enrichment

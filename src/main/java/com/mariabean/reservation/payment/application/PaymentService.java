@@ -7,14 +7,22 @@ import com.mariabean.reservation.payment.application.pg.PgReadyResult;
 import com.mariabean.reservation.global.exception.BusinessException;
 import com.mariabean.reservation.global.exception.ErrorCode;
 import com.mariabean.reservation.auth.application.SecurityUtils;
+import com.mariabean.reservation.facility.domain.ResourceItem;
+import com.mariabean.reservation.facility.domain.ResourceItemRepository;
 import com.mariabean.reservation.payment.domain.Payment;
 import com.mariabean.reservation.payment.domain.PaymentRepository;
 import com.mariabean.reservation.payment.infrastructure.external.pg.PgGatewayFactory;
+import com.mariabean.reservation.reservation.domain.Reservation;
+import com.mariabean.reservation.reservation.domain.ReservationRepository;
 import com.mariabean.reservation.event.kafka.PaymentApprovedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
 
 @Slf4j
 @Service
@@ -22,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentService {
 
         private final PaymentRepository paymentRepository;
+        private final ReservationRepository reservationRepository;
+        private final ResourceItemRepository resourceItemRepository;
         private final com.mariabean.reservation.event.outbox.application.OutboxService outboxService;
         private final PgGatewayFactory pgGatewayFactory;
 
@@ -34,6 +44,9 @@ public class PaymentService {
                 if (paymentRepository.existsActivePayment(request.getReservationId())) {
                         throw new BusinessException(ErrorCode.PAYMENT_ALREADY_EXISTS);
                 }
+
+                // 서버 측 금액 검증: 클라이언트가 보낸 amount와 서버 계산 금액 비교
+                validatePaymentAmount(request.getReservationId(), request.getAmount());
 
                 PgGateway gateway = pgGatewayFactory.getGateway(request.getProvider());
                 String orderId = "ORDER-" + request.getReservationId() + "-" + System.currentTimeMillis();
@@ -113,6 +126,40 @@ public class PaymentService {
                 Payment payment = paymentRepository.getByReservationId(reservationId);
                 validatePaymentOwnership(payment);
                 return payment;
+        }
+
+        /**
+         * 예약 기간과 리소스 시간당 요금으로 서버 측 결제 금액을 계산하고 클라이언트 요청 값과 비교.
+         * ResourceItem.customAttributes에 "pricePerHour" 키가 없으면 검증을 건너뜀 (무료 리소스).
+         * 허용 오차: ±1원 (반올림 차이 허용).
+         */
+        private void validatePaymentAmount(Long reservationId, BigDecimal clientAmount) {
+                Reservation reservation = reservationRepository.getById(reservationId);
+                ResourceItem resource = resourceItemRepository.getById(reservation.getResourceItemId());
+
+                Object pricePerHourRaw = resource.getCustomAttributes().get("pricePerHour");
+                if (pricePerHourRaw == null) {
+                        return; // 가격 정보 없는 경우 검증 skip (무료 리소스 또는 별도 정책)
+                }
+
+                BigDecimal pricePerHour;
+                try {
+                        pricePerHour = new BigDecimal(pricePerHourRaw.toString());
+                } catch (NumberFormatException e) {
+                        log.warn("[Payment] pricePerHour 파싱 실패, 검증 skip: resourceId={}", resource.getId());
+                        return;
+                }
+
+                long minutes = Duration.between(reservation.getStartTime(), reservation.getEndTime()).toMinutes();
+                BigDecimal hours = BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 4, RoundingMode.HALF_UP);
+                BigDecimal expectedAmount = pricePerHour.multiply(hours).setScale(0, RoundingMode.HALF_UP);
+
+                if (clientAmount.setScale(0, RoundingMode.HALF_UP).subtract(expectedAmount).abs()
+                        .compareTo(BigDecimal.ONE) > 0) {
+                        log.warn("[Payment] 금액 불일치: reservationId={}, clientAmount={}, expectedAmount={}",
+                                reservationId, clientAmount, expectedAmount);
+                        throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+                }
         }
 
         private void validatePaymentOwnership(Payment payment) {
