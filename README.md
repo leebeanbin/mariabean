@@ -1,7 +1,8 @@
-# MariBean — 예약 시스템 API
+# MariBean — AI 기반 공간·의료 예약 플랫폼
 
-Spring Boot 기반의 공간·의료 예약 플랫폼 백엔드입니다.
-다중 데이터 저장소, 분산락, 이벤트 기반 아키텍처(Transactional Outbox), 병원 지능형 검색(HIRA 표준 진료과 + Kakao Local)을 포함합니다.
+Spring Boot 3 + Next.js 16 풀스택 예약 플랫폼.
+Ollama 로컬 LLM(qwen2.5:7b · llava:7b · nomic-embed-text)이 Tavily 웹 검색 결과를 종합해
+**인용 출처가 붙은 AI 요약**과 함께 위치 기반 시설·병원을 추천합니다.
 
 ---
 
@@ -10,271 +11,283 @@ Spring Boot 기반의 공간·의료 예약 플랫폼 백엔드입니다.
 | 구분 | 기술 |
 |------|------|
 | Language | Java 17 (Azul Zulu) |
-| Framework | Spring Boot 3.3.x |
+| Framework | Spring Boot 3.3.5 |
+| AI / LLM | Spring AI 1.0.0 + Ollama (qwen2.5:7b · llava:7b · nomic-embed-text) |
+| 웹 검색 | Tavily API (필수) |
 | Auth | Spring Security + OAuth2 (Google, Kakao) + JWT |
-| RDB | PostgreSQL 16 + Spring Data JPA |
-| Document DB | MongoDB 7.0 + Spring Data MongoDB |
-| Cache / Lock | Redis 7 + Redisson (분산락) + Spring Cache |
-| Search | Elasticsearch 8.x + analysis-nori (한국어 형태소) |
-| Message Queue | Kafka (Confluent Platform 7.6) |
-| 지도/장소 | Google Places API + Kakao Local REST API |
-| 알림 | Gmail API (OAuth2 발송) |
+| RDB | PostgreSQL 16 + Spring Data JPA + QueryDSL |
+| Document DB | MongoDB 7.0 |
+| Cache / Lock | Redis 7 + Redisson (분산락) |
+| Search | Elasticsearch 8.x + nori 형태소 + kNN 벡터 검색 |
+| Message Queue | Kafka + Transactional Outbox Pattern |
+| 알림 | Gmail API (OAuth2) |
+| 지도 | Kakao Local API + Google Places API |
 | Rate Limiting | Bucket4j |
-| API Docs | Springdoc OpenAPI (Swagger UI `/swagger-ui.html`) |
-| Build | Gradle |
+| API Docs | Springdoc OpenAPI (Swagger UI) |
+| Frontend | Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS 4 |
 
 ---
 
-## 아키텍처 (Domain-Driven Package Structure)
+## 아키텍처
+
+```
+사용자 쿼리 (텍스트 or 이미지)
+        │
+        ▼
+┌────────────────────────────────────────────────┐
+│            AIResearchOrchestrator              │
+│                                                │
+│  1. 쿼리 분석 (qwen2.5:7b + Redis 이력)        │
+│  2. 병렬 실행 ─────────────────────────────    │
+│     ├─ HybridSearchService (ES kNN + BM25)     │
+│     └─ TavilyWebSearchService (웹 검색)        │
+│  3. 사진 Enrichment (Kakao + Google Places)    │
+│  4. 개인 메모 조회 (Redis / PostgreSQL)        │
+│  5. AI 종합 요약 + 인용 생성 (qwen2.5:7b)     │
+│  6. 랭킹 (score + 메모 boost + 트렌딩 boost)  │
+│  7. Redis 캐시 90s + Kafka 이벤트 발행        │
+└────────────────────────────────────────────────┘
+        │
+        ▼
+AIResearchResult {
+  query, aiSummary, citations[],    ← Perplexity 스타일
+  results[]: {
+    name, photos[], rating,          ← Notion 카드
+    webSnippet, webUrl,
+    userMemo, memoHighlighted,       ← 개인 메모 (Antigravity)
+    score, highlighted
+  }
+}
+```
+
+### 패키지 구조 (DDD · Hexagonal)
 
 ```
 com.mariabean.reservation
-├── global/          # 전역 설정·예외·보안·응답 래퍼
-├── auth/            # JWT, OAuth2 (Google/Kakao), SecurityUtils
-├── member/          # 회원 도메인
-├── facility/        # 시설·리소스·지도 도메인
-│   ├── api/         # FacilityController, ResourceItemController
-│   ├── application/ # FacilityService, ResourceItemService, MapService
-│   │               # SymptomSpecialtyMapping (증상→HIRA코드)
-│   ├── domain/      # Facility (specialties, operatingHours), ResourceItem
+├── global/        # 전역 설정·예외·보안·응답 래퍼
+├── auth/          # JWT, OAuth2 (Google/Kakao)
+├── member/        # 회원 도메인
+├── facility/      # 시설·리소스·지도 도메인
+│   ├── api/
+│   ├── application/   # FacilityService, MapService, SymptomSpecialtyMapping
+│   ├── domain/
 │   └── infrastructure/
-│       ├── config/  # HiraSpecialtyConfig (@ConfigurationProperties)
 │       ├── external/map/  # KakaoLocalSearchClient, GoogleMapClient
-│       └── persistence/   # FacilityMongoEntity, FacilityPersistenceAdapter
-├── reservation/     # 예약 도메인 (분산락, 만료 스케줄러)
-├── payment/         # 결제 도메인 (KakaoPay, TossPay PG)
-├── search/          # 검색 도메인
-│   ├── api/         # SearchController
-│   ├── application/ # SearchService, HospitalSearchService
-│   │               # ElasticsearchSyncService
-│   └── infrastructure/ # FacilitySearchDocument (specialties 포함)
-├── notification/    # 알림 도메인
+│       └── persistence/
+├── reservation/   # 예약 (Redisson 분산락, 만료 스케줄러)
+├── payment/       # 결제 (KakaoPay, TossPay)
+├── search/        # AI 검색 도메인
+│   ├── api/           # AIResearchController, VisionSearchController, UserPlaceMemoController
+│   ├── application/   # AIResearchOrchestrator, HybridSearchService, TavilyWebSearchService
+│   │                  # AISummaryService, VisionLocationAnalyzerService, AISearchRanker
+│   │                  # SearchQueryAnalyzerService, UserPlaceMemoService
+│   ├── domain/        # UserPlaceMemo
 │   └── infrastructure/
-│       └── gmail/   # GmailEmailSender, GmailTokenStore (Redis)
-├── email/           # 이메일 템플릿·예약 발송 도메인
-└── event/           # Kafka + Transactional Outbox Pattern
+│       └── persistence/  # FacilitySearchDocument (embedding 768-dim)
+├── notification/  # Gmail 알림
+├── email/         # 이메일 템플릿·예약 발송
+└── event/         # Kafka + Transactional Outbox
 ```
-
-### 핵심 설계 원칙
-
-| 원칙 | 내용 |
-|------|------|
-| Adapter Pattern | Repository는 interface, 영속 계층이 PersistenceAdapter로 구현 |
-| Soft Delete | `deletedAt` + 쿼리 레벨 필터 |
-| Audit Trail | `BaseTimeEntity / BaseMongoTimeEntity` — createdAt/updatedAt 자동 관리 |
-| 예외 위임 | `getById()` 패턴으로 서비스 레이어 `orElseThrow` 제거 |
 
 ---
 
 ## 주요 기능
 
-### 1. 병원 지능형 검색 (HIRA 표준)
-- **HIRA 진료과 코드 20종** (`application.yml` → `HiraSpecialtyConfig`)
-- **증상 → 진료과 코드 매핑** (`SymptomSpecialtyMapping`): 두통→`02,01`, 여성건강→`10` 등
-- **ES 진료과 필터 검색**: `specialties: List<String>` 필드 + geo_distance 복합 쿼리
-- **자연어 쿼리 검색**: "강남 정형외과" → ES nori match(fuzzy) + Kakao Local HP8 카테고리 직접 검색
-- **Kakao Local 통합**: 미등록 외부 병원까지 결과 합산, placeId 기준 중복 제거 (내부 우선)
-- **영업중(openNow) 필터**: MongoDB `metadata.operatingHours`를 KST 현재 시각과 비교
-- **Redis 캐시** TTL 60s (`hospitalSearch` 캐시 키)
+### 1. AI 리서치 검색 (Perplexity 스타일)
+- **ES Hybrid Search**: BM25(키워드) + kNN(nomic-embed-text 768-dim 벡터) → Reciprocal Rank Fusion
+- **Tavily 웹 검색**: 모든 위치 기반 검색에 실시간 웹 결과 포함 (필수)
+- **qwen2.5:7b 종합 요약**: 내부 DB + 웹 결과를 종합해 `[1]` 형식의 인용 번호가 붙은 요약 생성
+- **Redis 캐시** 90s, 검색 이력 기반 쿼리 개인화
 
-### 2. 동시성 제어 (Redisson 분산락)
-- `reservation:lock:{resourceItemId}` 키로 중복 예약 방지
+### 2. Vision 검색 (이미지 → 장소)
+- `llava:7b`가 업로드 이미지 또는 HTTPS URL을 분석 → 한국어 검색어 + 랜드마크 추출
+- SSRF 방지: HTTPS 전용, 사설 IP 차단, DNS rebinding 방지, 이미지 확장자 허용 목록
 
-### 3. Transactional Outbox Pattern
-- 결제·예약 이벤트를 DB와 동일 트랜잭션으로 `OutboxEvent` 테이블에 저장
-- `OutboxEventPublisherScheduler` (5초 주기) → Kafka 발행
+### 3. 개인 메모 + 재랭킹 (Antigravity 스타일)
+- 검색 결과 각 장소에 개인 메모 작성 → PostgreSQL 저장 + Redis 캐시 (TTL 10분)
+- `finalScore = aiScore + (boostScore / 5.0) × 0.3` → 메모 장소 자동 상위 노출
+- 클릭 피드백 → `user:pref:{memberId}` Redis ZSet → 최대 +0.15 boost
 
-### 4. Gmail 알림 시스템
-- Google OAuth2 Access Token → `GmailTokenStore` (Redis 저장)
-- `GmailEmailSender` + `ScheduledEmailProcessor` (60초 주기)
-- 알림 채널 전환: `NOTIFICATION_CHANNEL=gmail|kakao|log`
+### 4. 병원 지능형 검색
+- HIRA 표준 진료과 코드 20종 + 증상 → 진료과 코드 매핑 (`두통` → `02,01`)
+- Kakao Local 통합: 미등록 외부 병원까지 합산, placeId 기준 중복 제거
+- `openNow` 필터: MongoDB `operatingHours` KST 비교
 
-### 5. 성능 최적화
-- 시설 단건 조회 `@Cacheable` (Redis)
-- ES Bounding Box 공간 검색 (지도 화면 내 시설)
+### 5. 동시성 · 신뢰성
+- Redisson 분산락: `reservation:lock:{resourceItemId}` 중복 예약 방지
+- Transactional Outbox: 결제·예약·임베딩 작업을 동일 트랜잭션으로 저장 → Kafka 발행
+- `@RetryableTopic` (3회) AI 임베딩 컨슈머
 
-### 6. Rate Limiting
-- Google Places API 엔드포인트: Bucket4j 1분/IP당 10회
+### 6. Gmail 알림
+- Google OAuth2 Access Token → Redis 저장 → `GmailEmailSender`
+- `ScheduledEmailProcessor` 60초 주기 예약 발송
 
 ---
 
 ## API 엔드포인트
 
-### Auth — `/api/v1/auth`
+### AI 검색 — `/api/v1/search`
 | Method | Path | 설명 |
 |--------|------|------|
-| POST | `/refresh` | Access Token 재발급 |
-| POST | `/logout` | Refresh Token 삭제 |
-
-### Facility — `/api/v1/facilities`
-| Method | Path | 설명 |
-|--------|------|------|
-| POST | `/` | 시설 등록 (Google Places 자동 보완) |
-| GET | `/{id}` | 시설 상세 (캐시) |
-| GET | `/?category=&page=&size=` | 카테고리별 목록 |
-| PUT | `/{id}` | 시설 수정 |
-| PATCH | `/{id}/medical` | 진료과·운영시간 수정 (병원 전용) |
-| DELETE | `/{id}` | 시설 삭제 (Soft Delete) |
-| GET | `/places/search?query=` | 장소 텍스트 검색 (Kakao+Google) |
-| GET | `/places/{placeId}` | 장소 상세 |
-| GET | `/places/popular` | 인기 검색어 |
-
-### ResourceItem — `/api/v1/resources`
-| Method | Path | 설명 |
-|--------|------|------|
-| POST | `/` | 리소스 등록 |
-| GET | `/facility/{facilityId}` | 시설별 리소스 목록 |
-| GET | `/{resourceId}` | 단건 조회 |
-| PUT | `/{resourceId}` | 수정 |
-| DELETE | `/{resourceId}` | 삭제 |
-
-### Reservation — `/api/v1/reservations`
-| Method | Path | 설명 |
-|--------|------|------|
-| POST | `/` | 예약 생성 (분산락) |
-| GET | `/my` | 내 예약 목록 |
-| GET | `/{id}` | 상세 조회 |
-| POST | `/{id}/cancel` | 취소 |
-| POST | `/{id}/confirm` | 확정 (ADMIN) |
-| GET | `/public/availability` | 공개 시간슬롯 조회 (인증 불필요) |
-
-### Payment — `/api/v1/payments`
-| Method | Path | 설명 |
-|--------|------|------|
-| POST | `/ready` | 결제 준비 |
-| POST | `/approve` | 결제 승인 → Outbox 이벤트 |
-| POST | `/{id}/cancel` | 취소 |
-
-### Search — `/api/v1/search`
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | `/resources?keyword=` | 리소스 키워드 검색 (ES nori) |
-| GET | `/facilities/nearby?lat=&lng=&radiusKm=` | 반경 시설 검색 |
-| GET | `/facilities/box?topLeftLat=...` | 지도 Bounding Box 검색 |
-| GET | `/hospitals/nearby?lat=&lng=&radiusKm=&specialties=&symptom=&query=&openNow=` | 병원 통합 검색 |
+| GET | `/research?query=&lat=&lng=` | AI 리서치 검색 (ES kNN + Tavily + qwen2.5) |
+| GET | `/research/stream` | SSE 스트리밍 (initial → enriched → summary) |
+| POST | `/research/click` | 클릭 피드백 (Redis 선호도 학습) |
+| POST | `/vision` | 이미지 파일 업로드 → 장소 분석 |
+| POST | `/vision/url` | 이미지 URL → 장소 분석 |
+| POST | `/memo` | 개인 메모 저장 |
+| PUT | `/memo/{id}` | 메모 수정 |
+| DELETE | `/memo/{id}` | 메모 삭제 |
+| GET | `/memo?placeId=` | 장소별 메모 조회 |
+| GET | `/hospitals/nearby` | 병원 통합 검색 (HIRA + Kakao) |
 | GET | `/hospitals/specialties` | HIRA 진료과 20종 목록 |
+| GET | `/facilities/nearby` | 반경 시설 검색 |
+| GET | `/facilities/box` | 지도 Bounding Box 검색 |
 
-### Email — `/api/v1/email`
-| Method | Path | 설명 |
-|--------|------|------|
-| GET/POST | `/templates` | 이메일 템플릿 CRUD |
-| POST | `/send` | 즉시 발송 |
-| POST | `/schedule` | 예약 발송 |
-
----
-
-## 병원 검색 API 상세
-
-```
-GET /api/v1/search/hospitals/nearby
-  ?lat=37.5665
-  &lng=126.9780
-  &radiusKm=5
-  &specialties=01,13          ← HIRA 코드 (쉼표 구분)
-  &symptom=headache           ← 증상 ID (서버에서 코드 변환)
-  &query=강남+정형외과        ← 자연어 (query 있으면 나머지 무시)
-  &openNow=true
-  &page=0&size=20
-```
-
-**응답 필드**
+**AI 검색 응답 예시**
 ```json
 {
-  "facilityId": "...",        // null = 외부 병원
-  "placeId": "kakao-12345",
-  "name": "강남세브란스병원",
-  "address": "서울 강남구...",
-  "latitude": 37.49,
-  "longitude": 127.01,
-  "specialties": ["05"],
-  "openNow": true,            // null = 운영시간 미등록
-  "operatingHours": {"MON": {"open":"09:00","close":"18:00"}, ...},
-  "source": "INTERNAL",       // "INTERNAL" | "KAKAO"
-  "rank": 1
+  "query": "강남 내과",
+  "aiSummary": "강남구 내과는 총 12개가 검색되었습니다. 강남내과의원[1]은 평점 4.5로...",
+  "citations": [{"number": 1, "title": "강남내과의원", "url": "https://..."}],
+  "results": [{
+    "name": "강남내과의원",
+    "photos": ["https://..."],
+    "rating": 4.5,
+    "tags": ["주차가능", "당일예약"],
+    "webSnippet": "강남역 2번 출구 도보 3분...",
+    "userMemo": "친절하고 대기 짧음",
+    "memoHighlighted": true,
+    "score": 0.91,
+    "distanceMeters": 320,
+    "openNow": true
+  }]
 }
 ```
 
-**우선순위**: 내부 영업중 → 내부 기타 → Kakao 외부
-
----
-
-## 환경 변수
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `postgreUrl` / `postgreUser` / `postgrePwd` | PostgreSQL | - |
-| `mongoUri` | MongoDB URI | `mongodb://localhost:27017/reservation` |
-| `redisHost` / `redisPort` | Redis | `localhost / 6379` |
-| `elasticsearchUri` | Elasticsearch | `http://localhost:9200` |
-| `kafkaBootstrapServers` | Kafka | `localhost:9092` |
-| `jwtSecret` | JWT 서명 키 (최소 32바이트) | - |
-| `googleClientId` / `googleClientSecret` | Google OAuth2 (scope: gmail.send 포함) | - |
-| `kakaoClientId` / `kakaoClientSecret` | Kakao OAuth2 | - |
-| `googleMapsApiKey` | Google Places 보조 검색 | 빈값 허용 |
-| `kakaoRestApiKey` | Kakao Local REST API | 빈값 허용 |
-| `NOTIFICATION_CHANNEL` | 알림 채널: `gmail \| kakao \| log` | `gmail` |
-| `EMAIL_ADMIN_MEMBER_ID` | Gmail 발송에 쓸 관리자 memberId | `0` |
-| `FRONTEND_URL` | OAuth 리다이렉트 주소 | `http://localhost:3000` |
-| `kakaopayEnabled` / `kakaopaySecretKey` | KakaoPay | `false` |
-| `tosspayEnabled` / `tosspaySecretKey` | TossPay | `false` |
+### 기타 엔드포인트
+| 도메인 | 주요 경로 |
+|--------|---------|
+| Auth | `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` |
+| Facility | `CRUD /api/v1/facilities`, `GET /places/search?query=` |
+| Resource | `CRUD /api/v1/resources` |
+| Reservation | `POST /`, `GET /my`, `POST /{id}/cancel`, `GET /public/availability` |
+| Payment | `POST /ready`, `POST /approve`, `POST /{id}/cancel` |
+| Email | `CRUD /api/v1/email/templates`, `POST /send`, `POST /schedule` |
+| Admin | `GET /api/v1/admin/search/reindex` (ES 임베딩 일괄 생성) |
 
 ---
 
 ## 로컬 실행
 
-### Docker 인프라
+### 1. 인프라 기동 (Docker)
 
 ```bash
-docker compose up -d          # PostgreSQL, MongoDB, Redis, Elasticsearch
-docker compose --profile kafka up -d kafka   # Kafka (선택)
+# 핵심 인프라 + Ollama (모델 자동 다운로드: ~15GB, 수십 분 소요)
+docker compose up -d postgres mongo redis elasticsearch ollama
+
+# 모델 다운로드 완료 확인
+docker logs -f reservation-ollama-init
+# "[ollama-init] 모델 준비 완료" 출력 후 다음 단계
+
+# Kafka 포함 시 (선택)
+docker compose --profile kafka up -d kafka
 ```
 
-### 백엔드 실행 예시
+**Ollama 모델 구성**
+| 역할 | 모델 |
+|------|------|
+| 텍스트 분석·요약 | `qwen2.5:7b` |
+| 임베딩 (768-dim) | `nomic-embed-text` |
+| 이미지 분석 | `llava:7b` |
 
-```bash
-export postgreUrl=jdbc:postgresql://localhost:5433/reservation_db
-export postgreUser=leebeanbin
-export postgrePwd=
-export mongoUri=mongodb://localhost:27018/reservation
-export redisHost=localhost
-export redisPort=6380
-export elasticsearchUri=http://localhost:9200
-export jwtSecret=change_this_to_at_least_32_bytes_secure_secret
+### 2. IntelliJ 환경 변수
 
-./gradlew bootRun
-# → http://localhost:8080
-# → http://localhost:8080/swagger-ui.html
+Run Configuration → Environment Variables에 아래 설정:
+
+```
+# 인프라
+postgreUrl=jdbc:postgresql://localhost:5433/reservation_db
+postgreUser=leebeanbin
+postgrePwd=
+mongoUri=mongodb://localhost:27018/reservation
+redisHost=localhost
+redisPort=6380
+elasticsearchUri=http://localhost:9200
+kafkaBootstrapServers=localhost:9092
+
+# AI
+ollamaBaseUrl=http://localhost:11434
+TAVILY_API_KEY=tvly-...           ← 필수: tavily.com에서 발급
+
+# Auth
+jwtSecret=change_this_to_at_least_32_bytes_secure_secret
+googleClientId=...
+googleClientSecret=...
+kakaoClientId=...
+kakaoClientSecret=...
+
+# 지도
+kakaoRestApiKey=...
+googleMapsApiKey=...
+
+# Gmail 알림
+NOTIFICATION_CHANNEL=gmail
+EMAIL_ADMIN_MEMBER_ID=1
+
+# 결제 (선택)
+kakaopayEnabled=false
+tosspayEnabled=false
 ```
 
-### 테스트
+### 3. 앱 실행 순서
 
 ```bash
-./gradlew test              # 단위 테스트
+# 1. IntelliJ에서 ReservationApplication 실행
+# 2. Swagger: http://localhost:8080/swagger-ui.html
+# 3. Health: http://localhost:8080/actuator/health
+
+# 4. ES 임베딩 일괄 생성 (최초 1회, 로그인 후)
+curl -X GET http://localhost:8080/api/v1/admin/search/reindex \
+  -H "Authorization: Bearer {admin-jwt}"
+
+# 5. Gmail 토큰 저장 (관리자 계정 로그인 후 토큰 획득)
+POST /api/v1/admin/gmail/token
+{"accessToken":"...", "refreshToken":"..."}
+```
+
+### 4. 테스트
+
+```bash
+./gradlew test              # 단위 테스트 (102개, Docker 불필요)
 ./gradlew integrationTest   # Testcontainers 통합 테스트 (Docker 필요)
 ```
 
-| 테스트 | 커버리지 |
-|--------|----------|
-| `ReservationServiceTest` | 생성(분산락) / 확정 / 취소 / 예외 |
-| `ReservationConcurrencyTest` | 동시 예약 경합 시나리오 |
-| `PaymentServiceTest` | 준비 / 승인 / 취소 / Outbox 이벤트 |
-| `FacilityServiceTest` | 등록 도메인 매핑 |
-| `ResourceItemServiceTest` | 등록 및 ES 동기화 |
-| `PaymentIntegrationTest` | 결제 통합 플로우 |
-| `ReservationIntegrationTest` | 예약 통합 플로우 |
+---
+
+## 환경 변수 요약
+
+| 변수 | 필수 | 설명 |
+|------|------|------|
+| `postgreUrl` / `postgreUser` / `postgrePwd` | ✅ | PostgreSQL |
+| `mongoUri` | ✅ | MongoDB |
+| `redisHost` / `redisPort` | ✅ | Redis |
+| `elasticsearchUri` | ✅ | Elasticsearch |
+| `jwtSecret` | ✅ | JWT 서명 키 (32바이트 이상) |
+| `TAVILY_API_KEY` | ✅ | Tavily 웹 검색 (tavily.com) |
+| `googleClientId` / `googleClientSecret` | ✅ | Google OAuth2 (gmail.send 스코프 포함) |
+| `kakaoClientId` / `kakaoClientSecret` | ✅ | Kakao OAuth2 |
+| `ollamaBaseUrl` | ✅ | Ollama 서버 주소 |
+| `kakaoRestApiKey` | ⚠️ | Kakao Local 검색 (없으면 외부 병원 검색 불가) |
+| `googleMapsApiKey` | ⚠️ | Google Places 사진 보완 (없으면 Tavily 이미지 사용) |
+| `NOTIFICATION_CHANNEL` | - | `gmail`(기본) \| `kakao` \| `log` |
+| `EMAIL_ADMIN_MEMBER_ID` | - | Gmail 발송용 관리자 memberId |
+| `kafkaBootstrapServers` | - | Kafka (없으면 Outbox 이벤트 미발행) |
+| `kakaopaySecretKey` / `tosspaySecretKey` | - | 결제 PG |
 
 ---
 
-## Kakao 연동 체크리스트
+## CI
 
-1. Kakao Developers 콘솔 → 내 애플리케이션 → 플랫폼에 백엔드/프론트 도메인 등록
-2. Redirect URI: `{BACKEND_URL}/login/oauth2/code/kakao`
-3. 동의 항목: `profile_nickname`, `account_email`
-4. 프론트 로그인 진입점: `{API_URL}/oauth2/authorization/kakao`
-
-## Gmail 알림 체크리스트
-
-1. Google Cloud Console → OAuth 동의 화면 → scope에 `gmail.send` 추가
-2. 관리자 계정으로 Google 로그인 → Access Token 발급 → Redis 저장 자동화
-3. `EMAIL_ADMIN_MEMBER_ID` = 발급된 관리자 memberId
-4. `NOTIFICATION_CHANNEL=gmail`로 설정
+GitHub Actions (`.github/workflows/ci.yml`):
+- PR / push to `main` → `./gradlew test` (단위 테스트)
+- 테스트 리포트 artifact 업로드
