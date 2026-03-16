@@ -57,25 +57,33 @@ public class SecurityConfig {
                                 .sessionManagement(sessionManagement -> sessionManagement
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                                 .authorizeHttpRequests(authorize -> authorize
-                                                .requestMatchers("/api/v1/auth/**", "/oauth2/**", "/login/**")
-                                                .permitAll()
+                                                // 인증·OAuth2
+                                                .requestMatchers("/api/v1/auth/**", "/oauth2/**", "/login/**").permitAll()
+                                                // 공개 API
                                                 .requestMatchers("/api/v1/public/**").permitAll()
+                                                // 헬스체크
                                                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                                .requestMatchers("/actuator/**").hasRole("ADMIN")
-                                                .requestMatchers("/swagger-ui/**", "/swagger-ui.html",
-                                                                "/v3/api-docs/**")
-                                                .permitAll()
+                                                .requestMatchers("/actuator/**").hasRole("ADMIN")
+                                                // Swagger
+                                                .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                                                // 시설·리소스 목록 조회는 비로그인 허용 (쇼케이스)
                                                 .requestMatchers(org.springframework.http.HttpMethod.GET,
                                                                 "/api/v1/facilities/**",
-                                                                "/api/v1/resources/**",
-                                                                "/api/v1/search/**")
-                                                .permitAll()
-                                                .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                                                "/api/v1/resources/**").permitAll()
+                                                // 기본 검색(병원·시설 목록)은 비로그인 허용
+                                                .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                                                "/api/v1/search/hospitals/**",
+                                                                "/api/v1/search/facilities/**",
+                                                                "/api/v1/search/resources/**").permitAll()
+                                                // AI 기능(리서치·Vision·메모·클릭)은 로그인 필수
+                                                .requestMatchers(
+                                                                "/api/v1/search/research/**",
+                                                                "/api/v1/search/vision/**",
                                                                 "/api/v1/search/vision",
                                                                 "/api/v1/search/vision/url",
-                                                                "/api/v1/search/research/click")
-                                                .permitAll()
-                                                .requestMatchers("/api/v1/admin/search/**").hasRole("ADMIN")
+                                                                "/api/v1/search/memo/**").authenticated()
+                                                // Admin
+                                                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
                                                 .userInfoEndpoint(userInfo -> userInfo
