@@ -286,6 +286,58 @@ POST /api/v1/admin/gmail/token
 
 ---
 
+## 테스트
+
+### 실행
+
+```bash
+# 단위 테스트 (Docker 불필요)
+./gradlew test
+
+# 통합 테스트 (Docker + Testcontainers 필요)
+./gradlew integrationTest
+
+# 전체 실행
+./gradlew test integrationTest
+```
+
+> 통합 테스트는 PostgreSQL · MongoDB · Kafka · Elasticsearch Testcontainers를 자동 기동합니다.
+
+### 테스트 구성
+
+| 모듈 | 테스트 클래스 | 종류 | 주요 케이스 |
+|------|-------------|------|------------|
+| **예약** | `ReservationServiceTest` | 단위 | 분산 락 획득 후 정상 저장, 중복 예약 거부 |
+| | `ReservationTest` | 단위 | 상태 전이(PENDING→CONFIRMED→CANCELLED), 만료 처리 |
+| | `ReservationConcurrencyTest` | 단위 | 동시 예약 1건만 성공 |
+| | `ReservationIntegrationTest` | 통합 `@Tag("integration")` | 생성→조회→확정→취소 E2E, 404 응답 |
+| **결제** | `PaymentServiceTest` | 단위 | 결제 준비·승인·Outbox 이벤트 저장, 미존재 결제 예외 |
+| | `PaymentTest` | 단위 | 상태 전이(READY→APPROVED→CANCELLED), 중복 승인 예외 |
+| | `PaymentIntegrationTest` | 통합 `@Tag("integration")` | 준비→승인→Kafka 이벤트 발행 전체 흐름 |
+| **검색·AI** | `HybridSearchServiceTest` | 단위 | 벡터+키워드 하이브리드 검색 |
+| | `AIResearchOrchestratorTest` | 단위 | Tavily 검색 + LLM 요약 오케스트레이션 |
+| | `AISearchRankerTest` | 단위 | AI 기반 결과 재랭킹 |
+| | `AISummaryServiceTest` | 단위 | Ollama 호출 후 인용 출처 포함 요약 생성 |
+| | `SearchQueryAnalyzerServiceTest` | 단위 | 쿼리 분석 및 의도 분류 |
+| | `ElasticsearchSyncServiceTest` | 단위 | Elasticsearch 색인 동기화 |
+| | `AiEmbeddingConsumerTest` | 단위 | 임베딩 Kafka 컨슈머 |
+| **시설** | `FacilityServiceTest` | 단위 | 시설 CRUD, 검색 |
+| | `MapServiceTest` | 단위 | 위치 기반 검색 |
+| | `ResourceItemServiceTest` | 단위 | 예약 가능 자원 조회 |
+| **알림** | `KakaoNotificationRouterTest` | 단위 | 알림톡 성공·실패 fallback 분기 |
+| | `KakaoMessageTemplateFactoryTest` | 단위 | 결제·취소 알림 템플릿 생성 |
+| | `MemberNotificationRecipientReaderTest` | 단위 | memberId로 수신자 조회 |
+| **이벤트** | `ReservationEventConsumerTest` | 단위 | Kafka 이벤트 컨슈머 처리 |
+| **메모** | `UserPlaceMemoServiceTest` / `UserPlaceMemoControllerTest` | 단위 | 장소 메모 CRUD, API 응답 |
+
+### 테스트 전략
+
+- **단위 테스트**: Mockito 기반, Docker 없이 실행 (`./gradlew test`)
+- **통합 테스트**: `@Tag("integration")` 태그, Testcontainers로 PostgreSQL·MongoDB·Kafka·Elasticsearch 실 기동
+- **CI**: PR · push to `main` 시 단위 테스트 자동 실행, 리포트 artifact 업로드
+
+---
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`):
